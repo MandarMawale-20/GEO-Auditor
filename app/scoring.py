@@ -1,0 +1,117 @@
+"""
+Aggregation layer: turns per-category AuditSections into the final AuditReport —
+overall score, letter grade, AI Answerability Matrix, and priority roadmap.
+"""
+from __future__ import annotations
+
+from app.config import TOTAL_POSSIBLE_SCORE
+from app.models import AnswerabilityRow, AnswerabilityStatus, AuditSection, Finding, Severity
+
+_DIFFERENTIATION_KEYWORDS = (
+    "unlike", "compared to", "instead of", "vs.", "vs ", "better than",
+    "alternative to", "why choose", "why us", "what sets us apart",
+)
+
+GRADE_BANDS: list[tuple[float, str, str]] = [
+    (85, "A", "Excellent AI answerability"),
+    (70, "B", "Strong AI visibility"),
+    (55, "C", "Moderate / partial visibility"),
+    (40, "D", "Weak AI visibility"),
+    (0, "F", "High risk of AI invisibility"),
+]
+
+
+def compute_grade(total_score: float) -> tuple[str, str]:
+    for threshold, grade, label in GRADE_BANDS:
+        if total_score >= threshold:
+            return grade, label
+    return "F", "High risk of AI invisibility"
+
+
+def compute_total_score(sections: list[AuditSection]) -> float:
+    return round(sum(s.points_awarded for s in sections), 1)
+
+
+def collect_findings(sections: list[AuditSection]) -> list[Finding]:
+    findings: list[Finding] = []
+    for section in sections:
+        findings.extend(section.findings)
+    return findings
+
+
+def select_top_priorities(findings: list[Finding], limit: int = 3) -> list[Finding]:
+    actionable = [f for f in findings if f.severity in (Severity.CRITICAL, Severity.WARNING)]
+    actionable.sort(key=lambda f: (f.priority_score, f.points_possible - f.points_awarded), reverse=True)
+    return actionable[:limit]
+
+
+def build_priority_roadmap(findings: list[Finding]) -> list[Finding]:
+    """All actionable findings sorted by impact-vs-effort priority score, worst-first."""
+    actionable = [f for f in findings if f.severity in (Severity.CRITICAL, Severity.WARNING)]
+    actionable.sort(key=lambda f: (f.priority_score, f.points_possible - f.points_awarded), reverse=True)
+    return actionable
+
+
+def _finding_evidence(sections: list[AuditSection], category: str, title_snippet: str) -> Finding | None:
+    for section in sections:
+        if section.key != category:
+            continue
+        for finding in section.findings:
+            if title_snippet.lower() in finding.title.lower():
+                return finding
+    return None
+
+
+def build_answerability_matrix(sections: list[AuditSection], page_text: str) -> list[AnswerabilityRow]:
+    """Yes/Partial/No matrix for the 5 canonical AI-answerability questions."""
+    query_coverage_findings = {
+        f.category + ":" + f.title: f
+        for section in sections
+        if section.key == "query_coverage"
+        for f in section.findings
+    }
+
+    def status_for(dimension_label: str) -> tuple[AnswerabilityStatus, str]:
+        for finding in query_coverage_findings.values():
+            if finding.title.lower().startswith(dimension_label.lower()):
+                if finding.severity == Severity.PASS:
+                    return AnswerabilityStatus.YES, finding.evidence
+                return AnswerabilityStatus.NO, finding.evidence
+        return AnswerabilityStatus.PARTIAL, "Not evaluated."
+
+    what_status, what_evidence = status_for("What the product/service is")
+    who_status, who_evidence = status_for("Who it is for")
+    problem_status, problem_evidence = status_for("What problem it solves")
+    outcome_status, outcome_evidence = status_for("What measurable outcome it delivers")
+
+    lowered_text = page_text.lower()
+    has_differentiation = any(k in lowered_text for k in _DIFFERENTIATION_KEYWORDS)
+    why_status = AnswerabilityStatus.YES if has_differentiation else AnswerabilityStatus.NO
+    why_evidence = (
+        "Found comparative/differentiation language on the page."
+        if has_differentiation
+        else "No comparative language (e.g. 'unlike', 'vs.', 'why choose us') found."
+    )
+
+    return [
+        AnswerabilityRow(
+            question="What does this company do?", status=what_status, evidence=what_evidence
+        ),
+        AnswerabilityRow(question="Who is it for?", status=who_status, evidence=who_evidence),
+        AnswerabilityRow(
+            question="What problem does it solve?", status=problem_status, evidence=problem_evidence
+        ),
+        AnswerabilityRow(
+            question="What measurable result does it provide?",
+            status=outcome_status,
+            evidence=outcome_evidence,
+        ),
+        AnswerabilityRow(
+            question="Why choose it over alternatives?", status=why_status, evidence=why_evidence
+        ),
+    ]
+
+
+def validate_total_weight() -> None:
+    """Sanity check invoked at startup: scoring model must always sum to 100."""
+    assert TOTAL_POSSIBLE_SCORE == 100, "Scoring weights no longer sum to 100 — check config.py"

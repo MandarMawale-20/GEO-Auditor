@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GEO Report — {{ report.url }}</title>
+  <script>
+    tailwind = {
+      theme: {
+        extend: {
+          colors: {
+            bg: 'var(--bg)',
+            surface: 'var(--surface)',
+            'surface-2': 'var(--surface-2)',
+            border: 'var(--border)',
+            text: 'var(--text)',
+            muted: 'var(--muted)',
+            primary: 'var(--primary)',
+            success: 'var(--success)',
+            warning: 'var(--warning)',
+            danger: 'var(--danger)',
+          },
+          fontFamily: {
+            body: 'var(--font-body)',
+            mono: 'var(--font-mono)',
+          },
+          borderRadius: {
+            sm: 'var(--radius-sm)',
+            md: 'var(--radius-md)',
+            lg: 'var(--radius-lg)',
+            xl: 'var(--radius-xl)',
+            '2xl': 'var(--radius-2xl)',
+          },
+        },
+      },
+    };
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body class="bg-bg text-text min-h-screen">
+
+  <!-- Header -->
+  <header class="border-b border-border no-print">
+    <div class="container mx-auto px-6 py-4 flex items-center justify-between">
+      <a href="/" class="flex items-center gap-2">
+        <span class="w-8 h-8 rounded-lg bg-primary flex items-center justify-center font-bold text-white">G</span>
+        <span class="font-semibold text-lg tracking-tight">GEO Auditor</span>
+      </a>
+      <div class="flex items-center gap-3">
+        {% if report.is_smoke_test %}
+        <span class="badge badge-warning text-xs">Smoke-test artifact</span>
+        {% endif %}
+        {% if report.report_id %}<a href="/audit/pdf/{{ report.report_id }}" class="btn btn-outline btn-sm">Download PDF</a>{% endif %}
+        <a href="/" class="btn btn-primary btn-sm">New Audit</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="container mx-auto px-6 py-10">
+
+    <!-- Unreachable banner -->
+    {% if not report.fetch_health.reachable %}
+    <div class="banner banner-danger mb-8">
+      <h2 class="text-xl font-bold text-danger mb-2">Website Unreachable</h2>
+      <p class="text-sm text-muted mb-1">We could not fetch <strong>{{ report.url }}</strong>.</p>
+      <p class="text-sm">{{ report.fetch_health.error_message }}</p>
+      <p class="text-xs text-muted mt-2">Please verify the URL is correct and publicly reachable, then try again.</p>
+    </div>
+    {% endif %}
+
+    <!-- Calibration note -->
+    <div class="banner banner-info mb-8" id="calibration-banner">
+      <div class="flex items-start gap-3">
+        <span class="text-primary text-lg">ⓘ</span>
+        <div>
+          <p class="font-semibold text-primary mb-1">Calibration note</p>
+          <p class="text-sm text-muted">
+            This audit measures <strong>on-page GEO readiness</strong>. Large brands may receive
+            lower scores than their real-world AI visibility because off-page authority signals
+            (Wikipedia, Knowledge Graph, backlinks, brand mentions) are intentionally excluded
+            from this MVP.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Executive Summary -->
+    <section class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-10">
+      <div class="lg:col-span-2 surface-2 border border-border rounded-2xl p-8">
+        <p class="text-xs uppercase tracking-wide text-muted mb-1">GEO Audit for</p>
+        <h1 class="text-2xl font-bold break-all mb-6">{{ report.final_url or report.url }}</h1>
+
+        <div class="flex items-end gap-8 mb-6">
+          <!-- Score circle -->
+          <div class="relative">
+            {% set pct = (report.total_score / report.max_score * 100) | round(0) | int %}
+            {% set grade_color = "#10b981" if report.grade == "A" else
+                    "#38bdf8" if report.grade == "B" else
+                    "#f59e0b" if report.grade == "C" else
+                    "#f97316" if report.grade == "D" else "#ef4444" %}
+            <div class="relative w-32 h-32">
+              <svg class="w-full h-full" viewBox="0 0 100 100">
+                <circle cx="50" cy="50" r="44" fill="none" stroke="var(--surface-2)" stroke-width="6"/>
+                <circle
+                  cx="50" cy="50" r="44" fill="none" stroke="{{ grade_color }}"
+                  stroke-width="6"
+                  stroke-dasharray="{{ (pct / 100 * 276) | round(1) }} 276"
+                  transform="rotate(-90 50 50)"
+                />
+              </svg>
+              <div class="absolute inset-0 flex flex-col items-center justify-center">
+                <span class="text-4xl font-extrabold" style="color: {{ grade_color }}">{{ report.total_score | round(0, 'floor') | int }}</span>
+                <span class="text-xs text-muted">/ {{ report.max_score }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Grade badge -->
+          <div>
+            {% set grade_class = "badge-grade-a" if report.grade == "A" else
+                     "badge-grade-b" if report.grade == "B" else
+                     "badge-grade-c" if report.grade == "C" else
+                     "badge-grade-d" if report.grade == "D" else "badge-grade-f" %}
+            <span class="badge {{ grade_class }} text-2xl px-5 py-2">
+              {{ report.grade }}
+            </span>
+            <p class="text-sm text-muted mt-2">{{ report.grade_label }}</p>
+          </div>
+        </div>
+
+        <div class="flex flex-wrap gap-4 text-sm text-muted">
+          <span>Audited in {{ report.audit_duration_ms }}ms</span>
+          <span>&middot;</span>
+          <span>Generated {{ report.generated_at }}</span>
+          {% if report.llm_enhanced %}
+          <span>&middot;</span>
+          <span class="text-primary">Gemini-enhanced</span>
+          {% else %}
+          <span>&middot;</span>
+          <span class="text-warning/80">Deterministic fallback mode</span>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Fetch health sidebar -->
+      <div class="surface-2 border border-border rounded-2xl p-6">
+        <h3 class="text-xs font-semibold text-muted uppercase tracking-wide mb-4">Crawler Fetch Health</h3>
+        <dl class="space-y-3 text-sm">
+          <div class="flex justify-between">
+            <dt class="text-muted">HTTP Status</dt>
+            <dd class="font-mono text-text">{{ report.fetch_health.http_status or '—' }}</dd>
+          </div>
+          <div class="flex justify-between">
+            <dt class="text-muted">Fetch Time</dt>
+            <dd class="font-mono text-text">{{ report.fetch_health.fetch_time_ms and (report.fetch_health.fetch_time_ms | round(0) | int) }} ms</dd>
+          </div>
+          <div class="flex justify-between">
+            <dt class="text-muted">Redirects</dt>
+            <dd class="font-mono text-text">{{ report.fetch_health.redirect_count }}</dd>
+          </div>
+          <div class="flex justify-between">
+            <dt class="text-muted">HTML Size</dt>
+            <dd class="font-mono text-text">{{ report.fetch_health.html_size_bytes and ((report.fetch_health.html_size_bytes / 1024) | round(1)) }} KB</dd>
+          </div>
+        </dl>
+      </div>
+    </section>
+
+    <!-- Top 3 Priorities -->
+    {% if report.top_priorities %}
+    <section class="mb-10">
+      <h2 class="text-lg font-bold mb-4">Top 3 Priorities for Monday Morning</h2>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {% for finding in report.top_priorities %}
+        <div class="surface-2 border border-border rounded-xl p-5">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="w-2 h-2 rounded-full {% if finding.severity.value == 'critical' %}bg-danger{% else %}bg-warning{% endif %}"></span>
+            <span class="badge {% if finding.severity.value == 'critical' %}badge-danger{% else %}badge-warning{% endif %} text-[10px]">
+              {{ finding.severity.value }}
+            </span>
+          </div>
+          <h3 class="font-semibold mb-2">{{ finding.title }}</h3>
+          <p class="text-sm text-muted mb-3">{{ finding.recommendation }}</p>
+          <div class="flex gap-2 text-xs">
+            <span class="badge badge-ghost">Impact: {{ finding.impact.value }}</span>
+            <span class="badge badge-ghost">Effort: {{ finding.effort.value }}</span>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </section>
+    {% endif %}
+
+    <!-- Score Breakdown -->
+    <section class="mb-10">
+      <h2 class="text-lg font-bold mb-4">Score Breakdown</h2>
+      <p class="text-sm text-muted mb-4">10 categories across 100 possible points. Hover for details.</p>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {% for section in report.sections %}
+        <div class="surface-2 border border-border rounded-xl p-5">
+          <div class="flex justify-between items-start mb-3">
+            <h3 class="font-medium text-sm text-text">
+              {% if section.key == "structured_entity_data" %}
+                {{ section.label }} <span class="text-xs text-muted font-normal">— Signals detected directly on the audited page.</span>
+              {% else %}
+                {{ section.label }}
+              {% endif %}
+            </h3>
+            {% if section.llm_enhanced %}<span class="badge badge-info text-[10px]">AI</span>{% endif %}
+          </div>
+          <div class="flex items-baseline gap-2 mb-2">
+            <span class="text-2xl font-bold
+              {% if section.percentage >= 75 %}grade-a
+              {% elif section.percentage >= 40 %}grade-c
+              {% else %}grade-f{% endif %}">
+              {{ section.points_awarded | round(1) }}
+            </span>
+            <span class="text-sm text-muted">/ {{ section.points_possible | int }}</span>
+          </div>
+
+          <!-- Progress bar -->
+          <div class="progress mb-2">
+            <div class="progress-bar
+              {% if section.percentage >= 75 %}progress-success
+              {% elif section.percentage >= 40 %}progress-warning
+              {% else %}progress-danger{% endif %}"
+              style="width: {{ section.percentage }}%">
+            </div>
+          </div>
+
+          <div class="flex justify-between text-xs text-muted">
+            <span>{{ section.group }}</span>
+            <span>{{ section.percentage | round(0) | int }}%</span>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </section>
+
+    <!-- AI Answerability Matrix -->
+    {% if report.answerability_matrix %}
+    <section class="mb-10">
+      <h2 class="text-lg font-bold mb-4">AI Answerability Matrix</h2>
+      <div class="surface-2 border border-border rounded-xl overflow-hidden">
+        <table class="w-full text-sm">
+          <thead class="bg-surface border-b border-border text-xs uppercase tracking-wide text-muted">
+            <tr>
+              <th class="text-left px-5 py-3">Question</th>
+              <th class="text-left px-5 py-3">Status</th>
+              <th class="text-left px-5 py-3">Evidence</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-border">
+            {% for row in report.answerability_matrix %}
+            <tr>
+              <td class="px-5 py-3 text-text">{{ row.question }}</td>
+              <td class="px-5 py-3">
+                <span class="badge {% if row.status.value == 'yes' %}badge-success
+                  {% elif row.status.value == 'partial' %}badge-warning
+                  {% else %}badge-danger{% endif %}">
+                  {{ row.status.value | upper }}
+                </span>
+              </td>
+              <td class="px-5 py-3 text-muted">{{ row.evidence }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+    {% endif %}
+
+    <!-- Priority Roadmap -->
+    <section class="mb-10">
+      <h2 class="text-lg font-bold mb-1">Priority Roadmap</h2>
+      <p class="text-sm text-muted mb-4">Sorted by impact vs. effort — fix the top of this list first.</p>
+
+      <div class="space-y-3">
+        {% for finding in report.all_findings %}
+        {% if finding.severity.value in ['critical', 'warning'] %}
+        <div class="surface-2 border border-border rounded-xl p-5">
+          <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+            <div class="flex items-center gap-2">
+              <span class="w-2 h-2 rounded-full {% if finding.severity.value == 'critical' %}bg-danger{% else %}bg-warning{% endif %}"></span>
+              <span class="badge {% if finding.severity.value == 'critical' %}badge-danger{% else %}badge-warning{% endif %} text-[10px]">
+                {{ finding.severity.value }}
+              </span>
+              <h3 class="font-semibold">{{ finding.title }}</h3>
+            </div>
+            <div class="flex gap-2 text-xs">
+              <span class="badge badge-ghost">Impact: {{ finding.impact.value }}</span>
+              <span class="badge badge-ghost">Effort: {{ finding.effort.value }}</span>
+              <span class="badge badge-ghost">Est. time: {% if finding.effort.value == 'low' %}15 min{% elif finding.effort.value == 'medium' %}1–2 hrs{% else %}4+ hrs{% endif %}</span>
+            </div>
+          </div>
+
+          <p class="text-sm text-muted mb-2"><span class="text-muted">Why it matters:</span> {{ finding.why_it_matters }}</p>
+
+          <div class="evidence-block mb-2">
+            <p class="text-xs text-muted mb-1">Evidence</p>
+            <p class="font-mono break-words">{{ finding.evidence }}</p>
+          </div>
+
+          <p class="text-sm text-text mb-2"><span class="text-muted">Fix:</span> {{ finding.recommendation }}</p>
+
+          {% if finding.copy_paste_fix %}
+          <div class="relative mt-2">
+            <pre class="code-block"><code>{{ finding.copy_paste_fix }}</code></pre>
+            <button class="copy-btn no-print" data-copy-target="true">Copy</button>
+          </div>
+          {% endif %}
+        </div>
+        {% endif %}
+        {% endfor %}
+      </div>
+    </section>
+
+    <!-- Passing Checks -->
+    {% set pass_count = report.all_findings | selectattr('severity.value', 'equalto', 'pass') | list | length %}
+    {% if pass_count > 0 %}
+    <section class="mb-10">
+      <h2 class="text-lg font-bold mb-4">Passing Checks ({{ pass_count }})</h2>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {% for finding in report.all_findings %}
+        {% if finding.severity.value == 'pass' %}
+        <div class="surface-2 border border-border rounded-lg px-4 py-3 flex items-start gap-2">
+          <span class="text-success mt-0.5">✓</span>
+          <div>
+            <p class="text-sm text-text">{{ finding.title }}</p>
+            <p class="text-xs text-muted">{{ finding.points_awarded | round(1) }}/{{ finding.points_possible | round(1) }} pts</p>
+          </div>
+        </div>
+        {% endif %}
+        {% endfor %}
+      </div>
+    </section>
+    {% endif %}
+
+  </main>
+
+  <footer class="border-t border-border py-6 no-print">
+    <div class="container mx-auto px-6 text-xs text-muted text-center">
+      GEO Auditor — deterministic scoring engine + optional Gemini semantic layer. Not affiliated with Google, OpenAI, Anthropic, or Perplexity.
+    </div>
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
