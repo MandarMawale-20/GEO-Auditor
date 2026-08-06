@@ -6,7 +6,7 @@ Built as a take-home submission for the **Product Developer (AI Products)** role
 
 ---
 
-## TL;DR
+## Key Features
 
  - FastAPI GEO auditing tool
  - Explainable 100-point score with evidence-backed findings
