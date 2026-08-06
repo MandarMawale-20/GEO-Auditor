@@ -5,8 +5,9 @@ Scores:
   * Query Coverage (15 pts) — does the page answer what/who/problem/outcome?
   * AI Citation Snippet Quality (10 pts) — is there a clean, quotable summary?
 
-Uses Gemini 1.5 Flash when GEMINI_API_KEY is configured; otherwise falls
-back to keyword/heuristic scoring so the audit always completes.
+Uses Groq (OpenAI-compatible Chat Completions API) when GROQ_API_KEY is
+configured; otherwise falls back to keyword/heuristic scoring so the audit
+always completes.
 """
 from __future__ import annotations
 
@@ -200,7 +201,7 @@ async def score_citation_snippet_quality(parsed: ParsedPage, final_url: str) -> 
                 is_strong = bool(int(llm_result.data.get("is_strong_snippet", 0)))
             except (TypeError, ValueError):
                 is_strong = bool(llm_result.data.get("is_strong_snippet"))
-            reason = llm_result.data.get("reason") or "Evaluated by Gemini."
+            reason = llm_result.data.get("reason") or "Evaluated by Groq."
             llm_used = True
         else:
             is_strong, reason = _fallback_citation_quality(candidate)
@@ -208,17 +209,7 @@ async def score_citation_snippet_quality(parsed: ParsedPage, final_url: str) -> 
         is_strong, reason = _fallback_citation_quality(candidate)
 
     points = 10.0 if is_strong else 0.0
-    section.points_awarded = points
-    section.llm_enhanced = llm_used
-    section.findings.append(
-        Finding(
-            category="ai_citation_snippet_quality",
-            severity=Severity.PASS if is_strong else Severity.WARNING,
-            title=(
-                "Found a strong, citation-ready snippet"
-                if is_strong
-                else "No strong citation-ready snippet found"
-            ),
+        """Hybrid semantic checks with an LLM path and a deterministic fallback."""
             why_it_matters=(
                 "AI answer engines often quote a single self-contained paragraph verbatim. "
                 "Without one, they must stitch together a summary themselves — or skip citing you."

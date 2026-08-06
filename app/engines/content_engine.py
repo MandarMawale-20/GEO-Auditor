@@ -40,20 +40,13 @@ def score_quote_readiness(parsed: ParsedPage) -> AuditSection:
     # --- Sub-check 1: question-style headings present (5 pts) ---
     q_points = 5.0 if question_headings else 0.0
     section.findings.append(
-        Finding(
-            category="quote_readiness",
-            severity=Severity.PASS if q_points else Severity.WARNING,
-            title=(
-                f"Found {len(question_headings)} question-style heading(s)"
-                if q_points
-                else "No question-style H2/H3 headings found"
-            ),
+    """Deterministic checks for answer snippets, facts, and media balance."""
             why_it_matters=(
                 "AI answer engines match user questions against headings. Question-phrased "
                 "headings ('What is X?', 'How does X work?') are directly extractable as answers."
             ),
             evidence=(
-                f"Example: \"{question_headings[0][0].get_text(strip=True)}\""
+        # Question-style headings are easy for AI systems to reuse.
                 if question_headings
                 else f"Checked {len(heading_pairs)} H2/H3 headings; none were phrased as questions."
             ),
@@ -85,7 +78,7 @@ def score_quote_readiness(parsed: ParsedPage) -> AuditSection:
                 if lead_points
                 else "No heading is followed by a 20-50 word direct-answer paragraph"
             ),
-            why_it_matters=(
+        # Short, direct lead paragraphs tend to get cited.
                 "Inverted-pyramid style — answering the question immediately in a concise "
                 "paragraph — is exactly the shape AI systems extract for direct answers."
             ),
@@ -120,7 +113,7 @@ def score_quote_readiness(parsed: ParsedPage) -> AuditSection:
             ),
             evidence=(f"Detected phrases: {', '.join(fluff_found)}." if fluff_found else "No fluff phrases matched."),
             recommendation="Replace vague marketing language with concrete, specific claims and numbers.",
-            impact=ImpactLevel.MEDIUM,
+        # Skip marketing fluff and look for concrete language.
             effort=EffortLevel.MEDIUM,
             points_awarded=fluff_points,
             points_possible=5,

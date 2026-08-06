@@ -255,7 +255,7 @@ def _build_story(report: AuditReport) -> list:
         f"<b>Audit Duration:</b> {report.audit_duration_ms} ms",
     ]
     if report.llm_enhanced:
-        summary_parts.append("<b>Scoring Mode:</b> Gemini-enhanced")
+        summary_parts.append("<b>Scoring Mode:</b> Groq-enhanced")
     elif report.llm_error:
         summary_parts.append(f"<b>Scoring Mode:</b> Deterministic fallback")
     else:

@@ -1,6 +1,6 @@
 # GEO Auditor
 
-GEO Auditor is a FastAPI application that audits a business website and estimates how visible it is to AI answer engines such as ChatGPT Search, Google AI Overviews, Gemini, Perplexity, Claude, and Bing Copilot. It produces an explainable 100-point score, evidence-backed findings, and copy-pasteable fixes — typically in ~1–3 seconds when running in deterministic mode.
+GEO Auditor is a FastAPI application that audits a business website and estimates how visible it is to AI answer engines such as ChatGPT Search, Google AI Overviews, Perplexity, Claude, and Bing Copilot, with Groq-backed semantic checks for the two LLM-assisted categories. It produces an explainable 100-point score, evidence-backed findings, and copy-pasteable fixes — typically in ~1–3 seconds when running in deterministic mode.
 
 Built as a take-home submission for the **Product Developer (AI Products)** role at **Phaze AI**.
 
@@ -10,7 +10,7 @@ Built as a take-home submission for the **Product Developer (AI Products)** role
 
  - FastAPI GEO auditing tool
  - Explainable 100-point score with evidence-backed findings
- - Deterministic core (fast) + optional Gemini semantic layer (optional, may add latency)
+ - Deterministic core (fast) + optional Groq semantic layer (optional, may add latency)
  - HTML report + text-first PDF export
  - Runs locally with no database or authentication
 
@@ -37,7 +37,7 @@ Target users: **B2B SaaS startups and professional-service SMBs**.
 
 - No login, no database, no persistence — enter a URL, get a report, done.
 - The report is the product: every score is backed by a specific, evidence-backed finding.
-- Typical runtime: ~1–3 seconds in deterministic mode (no live LLM calls). Enabling Gemini may increase latency depending on network and API availability.
+- Typical runtime: ~1–3 seconds in deterministic mode (no live LLM calls). Enabling Groq may increase latency depending on network and API availability.
 - Run locally: `uvicorn app.main:app --reload` and open `http://127.0.0.1:8000`.
 
 ## 4. Architecture
@@ -63,7 +63,7 @@ grade, AI Answerability Matrix, and a priority roadmap sorted by impact × effor
 
 The GEO Auditor uses deterministic Python rules for technical accessibility,
 schema validation, and structural extractability so scores remain fully
-reproducible. Gemini 1.5 Flash is used only for constrained semantic
+reproducible. Groq is used only for constrained semantic
 evaluation and personalized recommendation generation, with `temperature=0`
 and strict JSON validation. If the API is unavailable, the audit still
 completes successfully using deterministic fallbacks.
@@ -73,7 +73,7 @@ accessibility, JS rendering risk, structured entity data, entity completeness,
 quote readiness, fact density, media-to-text balance, freshness). Only **Query
 Coverage** and **AI Citation Snippet Quality** touch the LLM layer — and even
 those have a full heuristic fallback path, so nothing in the product ever
-depends on Gemini being reachable.
+depends on Groq being reachable.
 
 ## 5. Scoring Methodology
 
@@ -87,8 +87,8 @@ The original spec's category table summed to **110**, not 100. It has been rebal
 | Structured Entity Data                    | 10     | Entity (deterministic) |
 | Entity Completeness and Trust Signals     | 10     | Entity (deterministic) |
 | Quote Readiness / Answer Extractability   | 15     | Content (deterministic) |
-| Query Coverage                            | 15     | Intelligence (Gemini + fallback) |
-| AI Citation Snippet Quality               | 10     | Intelligence (Gemini + fallback) |
+| Query Coverage                            | 15     | Intelligence (Groq + fallback) |
+| AI Citation Snippet Quality               | 10     | Intelligence (Groq + fallback) |
 | Fact Density and Structured Tables        | 10     | Content (deterministic) |
 | Freshness Signals                         | 5      | Technical (deterministic) |
 | JavaScript Rendering Risk                 | 5      | Technical (deterministic) |
@@ -120,8 +120,8 @@ receive lower on-page scores — see the calibration note in every report.
   never call an external API, are fully reproducible, and run in roughly
   1-2 seconds total.
 - **LLM-assisted (25 of 100 points):** Query Coverage and Citation Snippet
-  Quality ask Gemini 1.5 Flash to judge, using *only* the page's own text, and
-  return strict JSON. If Gemini is unavailable, disabled, or errors, a
+  Quality ask Groq to judge, using *only* the page's own text, and
+  return strict JSON. If Groq is unavailable, disabled, or errors, a
   keyword/heuristic fallback (audience-targeting phrases, outcome/metric
   language, problem-framing language) scores the same two categories instead,
   so the audit always produces a complete report.
@@ -162,23 +162,23 @@ the report is stored in an in-memory cache keyed by a UUID `report_id`. The
 
 **Why ReportLab instead of HTML printing?** HTML printing (via `window.print()`) captures whatever the browser renders — including scrollbars, background colors, interactive UI elements, and CSS that behaves differently on paper. A text-first PDF ensures the report is clean, print-ready, and free of UI artifacts.
 
-## 6. Gemini Integration — Important Caveat
+## 6. Groq Integration — Important Caveat
 
-The Gemini REST client (`app/services/llm_service.py`) is fully implemented:
+The Groq REST client (`app/services/llm_service.py`) is fully implemented:
 `temperature=0`, strict JSON response mode, per-`(url, finding_type)` caching,
 timeout handling, and error-message propagation back into the report as
 `llm_error`.
 
-**However: live Gemini API calls were not validated from inside the build
+**However: live Groq API calls were not validated from inside the build
 sandbox.** That environment's outbound network is restricted to a small
 package-registry allowlist (PyPI, npm, GitHub, etc.) and does not include
-`generativelanguage.googleapis.com`. The client code follows Gemini's
+`api.groq.com`. The client code follows Groq's
 documented REST contract, but you should verify it against a real
-`GEMINI_API_KEY` before relying on it in production — the app was built and
+`GROQ_API_KEY` before relying on it in production — the app was built and
 tested end-to-end in **deterministic fallback mode** (no key configured),
 which is also its default, zero-config state.
 
-To enable Gemini, set `GEMINI_API_KEY` in `.env` — no code changes needed.
+To enable Groq, set `GROQ_API_KEY` in `.env` — no code changes needed.
 
 ## 7. Setup Instructions
 
@@ -201,18 +201,18 @@ Open **http://127.0.0.1:8000**.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `GEMINI_API_KEY` | *(unset)* | Enables the Gemini semantic layer. App works fully without it. |
-| `GEMINI_MODEL` | `gemini-1.5-flash` | Gemini model name |
-| `GEMINI_BASE_URL` | Google's public endpoint | Rarely needs changing |
+| `GROQ_API_KEY` | *(unset)* | Enables the Groq semantic layer. App works fully without it. |
+| `GROQ_MODEL` | `llama-3.1-8b-instant` | Groq model name |
+| `GROQ_BASE_URL` | `https://api.groq.com/openai/v1` | Rarely needs changing |
 | `REQUEST_TIMEOUT_SECONDS` | `8.0` | Timeout for fetching the target site/robots/sitemap |
-| `LLM_TIMEOUT_SECONDS` | `6.0` | Timeout per Gemini call |
+| `LLM_TIMEOUT_SECONDS` | `6.0` | Timeout per Groq call |
 | `MAX_HTML_BYTES` | `3000000` | Safety cap on HTML processed per audit |
 | `APP_ENV` | `development` | Informational only |
 
 ## 8. Example Report Section
 
 From a real audit run against a live site during development (deterministic
-mode, no Gemini key):
+mode, no Groq key):
 
 > **AI Crawler Accessibility — 8 / 15**
 > ⚠️ *PerplexityBot is blocked in robots.txt*
@@ -252,7 +252,7 @@ the following were deliberately **cut**:
   which the current static-HTML-only check can't fully separate.
 - **Competitive benchmarking** — audit 2-3 competitor URLs alongside the
   target and show relative GEO positioning.
-- **Validate the Gemini integration against a real API key** and tune prompt
+- **Validate the Groq integration against a real API key** and tune prompt
   wording using real disagreement cases between the LLM judgments and the
   deterministic fallback heuristics.
 
@@ -272,7 +272,7 @@ the following were deliberately **cut**:
   string pulled from the actual scraped page — not a generic template — which
   is the entire point of a *credible* audit tool aimed at technical and
   non-technical buyers alike.
-- **Honest about what wasn't validated.** The Gemini REST integration is
+- **Honest about what wasn't validated.** The Groq REST integration is
   fully built but explicitly flagged as unvalidated against a live key,
   rather than presented as tested when it wasn't. A take-home that overstates
   its own test coverage is a worse signal than one that's precise about it.
@@ -293,13 +293,13 @@ geo-auditor/
 │   │   ├── technical_engine.py      # Crawler access, JS risk, freshness
 │   │   ├── entity_engine.py          # JSON-LD schema, trust pages
 │   │   ├── content_engine.py          # Quote readiness, fact density, media balance
-│   │   └── intelligence_engine.py      # Query coverage, citation quality (Gemini + fallback)
+│   │   └── intelligence_engine.py      # Query coverage, citation quality (Groq + fallback)
 │   ├── services/
 │   │   ├── fetcher.py                   # Async HTTP fetch w/ browser headers
 │   │   ├── robots.py                     # Custom robots.txt parser (AI-bot aware)
 │   │   ├── sitemap.py                     # Sitemap discovery + lastmod extraction
 │   │   ├── html_utils.py                   # Shared BeautifulSoup helpers
-│   │   ├── llm_service.py                   # Gemini REST client w/ cache + fallback
+│   │   ├── llm_service.py                   # Groq REST client w/ cache + fallback
 │   │   └── pdf_service.py                   # ReportLab Platypus text-first PDF generator
 │   ├── templates/
 │   │   ├── index.html                        # Landing page (hero, CTA, how-it-works)
@@ -322,7 +322,6 @@ geo-auditor/
 2. Open `http://127.0.0.1:8000` and run an audit for a SaaS site (e.g. `https://www.hubspot.com`).
 3. Inspect the HTML report and click **Download PDF** to validate the PDF export.
 4. Verify the health endpoint: `http://127.0.0.1:8000/health`.
-5. Optional: view sample reports at `/report/sample/report_1`, `/report_2`, `/report_3`.
 
 
 ```bash

@@ -88,7 +88,6 @@
 
       <p class="text-xs text-muted mt-3">No signup. No database. Nothing is stored.</p>
 
-      <!-- Example URL chips -->
       <div class="mt-8 flex flex-wrap justify-center gap-2">
         <span class="text-xs text-muted">Try:</span>
         <button type="button" class="example-chip" onclick="document.getElementById('url-input').value='stripe.com';">stripe.com</button>
@@ -99,7 +98,6 @@
       </div>
     </section>
 
-    <!-- How it works -->
     <section class="container mx-auto px-6 py-12">
       <h2 class="text-2xl font-bold text-center mb-2">How it works</h2>
       <p class="text-muted text-center mb-12 max-w-xl mx-auto">
@@ -133,7 +131,6 @@
 
     <div class="divider"></div>
 
-    <!-- What we check -->
     <section class="container mx-auto px-6 py-12">
       <h2 class="text-2xl font-bold text-center mb-2">What we check</h2>
       <p class="text-muted text-center mb-12 max-w-xl mx-auto">
@@ -185,23 +182,22 @@
     </section>
   </main>
 
-  <!-- Deterministic mode notice -->
   <section class="container mx-auto px-6 pb-8">
     {% if not llm_enabled %}
     <div class="banner banner-warning text-center">
       <p class="text-sm">
         <span class="banner-warning-text font-semibold">Running in deterministic mode</span>
-        — no <code class="text-xs">GEMINI_API_KEY</code> configured. All 10 categories still score
+        — no <code class="text-xs">GROQ_API_KEY</code> configured. All 10 categories still score
         fully using rule-based fallbacks; semantic checks (Query Coverage, Citation Snippet Quality)
-        use heuristics instead of Gemini.
+        use heuristics instead of Groq.
       </p>
     </div>
     {% else %}
     <div class="banner banner-info text-center">
       <p class="text-sm">
         <span class="banner-info-icon font-semibold">🧠</span>
-        Gemini semantic layer is enabled — two categories (Query Coverage, Citation Snippet Quality)
-        use Gemini 1.5 Flash for nuanced evaluation.
+        Groq semantic layer is enabled — two categories (Query Coverage, Citation Snippet Quality)
+        use Groq LLM for nuanced evaluation.
       </p>
     </div>
     {% endif %}
@@ -209,7 +205,7 @@
 
   <footer class="border-t border-border py-6">
     <div class="container mx-auto px-6 text-xs text-muted text-center">
-      GEO Auditor — a Phaze AI take-home project. Deterministic scoring engine + optional Gemini semantic layer.
+      GEO Auditor — a Phaze AI take-home project. Deterministic scoring engine + optional Groq semantic layer.
     </div>
   </footer>
 

@@ -1,13 +1,4 @@
-"""
-FastAPI application entrypoint for GEO Auditor.
-
-Routes:
-  GET  /                       -> input form
-  POST /audit                  -> run audit, render report, cache for PDF
-  GET  /audit/pdf/{report_id}  -> download a cached audit as a PDF
-  GET  /report/sample/{id}     -> serve a pre-generated sample report
-  GET  /health                 -> liveness/readiness JSON
-"""
+"""FastAPI application entrypoint for GEO Auditor."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -40,11 +31,10 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# Configure a dedicated logger that always writes to stdout so logs
-# appear regardless of how Uvicorn/IDE configures root logging.
+# Keep logs on stdout so they show up the same way in Uvicorn and the IDE.
 logger = logging.getLogger("geo_auditor")
 logger.setLevel(logging.INFO)
-# Remove any inherited handlers to avoid duplicates during reloads
+# Drop inherited handlers so reloads do not duplicate log lines.
 logger.handlers.clear()
 handler = logging.StreamHandler(sys.stdout)
 handler.setLevel(logging.INFO)
@@ -55,9 +45,7 @@ logger.addHandler(handler)
 logger.propagate = False
 
 
-# Simple request logging middleware so each request and its status code
-# are printed to the terminal. Also ensures exceptions are logged with
-# a full traceback for easier debugging when running locally.
+# Log each request and surface failures with a traceback.
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     logger.info("%s %s", request.method, request.url.path)
@@ -82,8 +70,7 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
-# In-memory cache for generated audit reports, keyed by report_id (uuid hex).
-# Used by the PDF export endpoint to retrieve a report without re-running the audit.
+# In-memory cache for reports used by the PDF endpoint.
 REPORT_CACHE: dict[str, AuditReport] = {}
 
 
@@ -119,7 +106,6 @@ async def audit(request: Request, url: str = Form(...)) -> HTMLResponse:
 
 @app.get("/audit/pdf/{report_id}")
 async def download_pdf(report_id: str) -> Response:
-    """Generate and serve a text-first PDF report for a cached audit."""
     report = REPORT_CACHE.get(report_id)
     if report is None:
         return HTMLResponse(
@@ -164,7 +150,7 @@ async def health() -> JSONResponse:
         {
             "status": "ok",
             "llm_enabled": settings.llm_enabled,
-            "gemini_model": settings.gemini_model if settings.llm_enabled else None,
+            "groq_model": settings.groq_model if settings.llm_enabled else None,
             "scoring_total": TOTAL_POSSIBLE_SCORE,
             "app_env": settings.app_env,
         }
@@ -173,7 +159,6 @@ async def health() -> JSONResponse:
 
 @app.get("/debug-log")
 async def debug_log() -> JSONResponse:
-    """Temporary diagnostic endpoint: logs via logger and prints to stdout."""
     logger.info("DEBUG ENDPOINT HIT")
     print("PRINT ENDPOINT HIT", flush=True)
     return JSONResponse({"ok": True})

@@ -1,9 +1,7 @@
-// GEO Auditor — progressive-enhancement script (no framework needed).
-// Handles copy-paste fix buttons, audit form loading state, and
-// smooth scroll for anchor links.
+// Small progressive-enhancement script for GEO Auditor.
 
 document.addEventListener("DOMContentLoaded", () => {
-  // ---- Copy-paste buttons -------------------------------------------------
+  // Copy fix snippets to the clipboard.
   document.querySelectorAll(".copy-btn").forEach((button) => {
     button.addEventListener("click", async () => {
       const pre = button.parentElement.querySelector("pre code");
@@ -23,7 +21,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
-  // ---- Audit form loading state ----------------------------------------
+  // Disable the form while the audit is running.
   const form = document.getElementById("audit-form");
   const submitBtn = document.getElementById("audit-submit");
   if (form && submitBtn) {

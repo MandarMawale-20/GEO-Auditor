@@ -136,15 +136,15 @@ SPA_MARKERS: tuple[str, ...] = (
 class Settings:
     """Runtime settings loaded from environment variables (.env supported)."""
 
-    gemini_api_key: str | None = field(
-        default_factory=lambda: os.getenv("GEMINI_API_KEY") or None
+    groq_api_key: str | None = field(
+        default_factory=lambda: os.getenv("GROQ_API_KEY") or None
     )
-    gemini_model: str = field(
-        default_factory=lambda: os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+    groq_model: str = field(
+        default_factory=lambda: os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
     )
-    gemini_base_url: str = field(
+    groq_base_url: str = field(
         default_factory=lambda: os.getenv(
-            "GEMINI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta"
+            "GROQ_BASE_URL", "https://api.groq.com/openai/v1"
         )
     )
     request_timeout_seconds: float = field(
@@ -160,7 +160,7 @@ class Settings:
 
     @property
     def llm_enabled(self) -> bool:
-        return bool(self.gemini_api_key)
+        return bool(self.groq_api_key)
 
 
 settings = Settings()

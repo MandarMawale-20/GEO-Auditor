@@ -1,10 +1,4 @@
-"""
-Entity & Trust Engine (deterministic).
-
-Scores:
-  * Structured Entity Data (10 pts)
-  * Entity Completeness & Trust Signals (10 pts)
-"""
+"""Deterministic checks for entity data and trust signals."""
 from __future__ import annotations
 
 from urllib.parse import urljoin
@@ -46,7 +40,7 @@ def score_structured_entity_data(parsed: ParsedPage) -> AuditSection:
                     "about who you are. Without it, the model has to infer everything from "
                     "unstructured prose, which is far less reliable for citation."
                 ),
-                evidence="No <script type=\"application/ld+json\"> block with @type Organization/Product/SoftwareApplication was found.",
+                evidence="No JSON-LD block with an Organization, Product, or SoftwareApplication type was found.",
                 recommendation="Add an Organization JSON-LD block to your homepage <head>.",
                 copy_paste_fix=(
                     '<script type="application/ld+json">\n'
@@ -154,7 +148,7 @@ async def _page_returns_200(base_url: str, href: str | None) -> bool:
             follow_redirects=True, timeout=settings.request_timeout_seconds
         ) as client:
             response = await client.head(target)
-            if response.status_code == 405:  # HEAD not allowed, fall back to GET
+            if response.status_code == 405:  # Some sites block HEAD, so try GET.
                 response = await client.get(target)
             return response.status_code < 400
     except Exception:  # noqa: BLE001

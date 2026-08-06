@@ -1,7 +1,4 @@
-"""
-Aggregation layer: turns per-category AuditSections into the final AuditReport —
-overall score, letter grade, AI Answerability Matrix, and priority roadmap.
-"""
+"""Turn scored sections into the final audit report."""
 from __future__ import annotations
 
 from app.config import TOTAL_POSSIBLE_SCORE
@@ -46,7 +43,6 @@ def select_top_priorities(findings: list[Finding], limit: int = 3) -> list[Findi
 
 
 def build_priority_roadmap(findings: list[Finding]) -> list[Finding]:
-    """All actionable findings sorted by impact-vs-effort priority score, worst-first."""
     actionable = [f for f in findings if f.severity in (Severity.CRITICAL, Severity.WARNING)]
     actionable.sort(key=lambda f: (f.priority_score, f.points_possible - f.points_awarded), reverse=True)
     return actionable
@@ -63,7 +59,6 @@ def _finding_evidence(sections: list[AuditSection], category: str, title_snippet
 
 
 def build_answerability_matrix(sections: list[AuditSection], page_text: str) -> list[AnswerabilityRow]:
-    """Yes/Partial/No matrix for the 5 canonical AI-answerability questions."""
     query_coverage_findings = {
         f.category + ":" + f.title: f
         for section in sections
@@ -113,5 +108,4 @@ def build_answerability_matrix(sections: list[AuditSection], page_text: str) -> 
 
 
 def validate_total_weight() -> None:
-    """Sanity check invoked at startup: scoring model must always sum to 100."""
     assert TOTAL_POSSIBLE_SCORE == 100, "Scoring weights no longer sum to 100 — check config.py"

@@ -1,11 +1,4 @@
-"""
-Technical Accessibility Engine (deterministic).
-
-Scores:
-  * AI Crawler Accessibility (15 pts)
-  * JavaScript Rendering Risk (5 pts)
-  * Freshness Signals (5 pts)
-"""
+"""Deterministic checks for crawlability, rendering, and freshness."""
 from __future__ import annotations
 
 from datetime import datetime, timezone

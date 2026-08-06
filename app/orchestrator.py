@@ -1,12 +1,4 @@
-"""
-Orchestrator: the single entrypoint that runs a complete GEO audit.
-
-Sequence:
-  1. Fetch HTML, robots.txt, sitemap.xml concurrently.
-  2. If the page is unreachable, short-circuit into a graceful "unreachable" report.
-  3. Parse HTML once, run all four engines concurrently against the parsed page.
-  4. Aggregate sections -> score -> grade -> answerability matrix -> priority roadmap.
-"""
+"""Run a full GEO audit and assemble the final report."""
 from __future__ import annotations
 
 import asyncio
@@ -33,7 +25,6 @@ from app.services.sitemap import get_sitemap_info
 
 
 def _unreachable_report(raw_url: str, url: str, error_message: str, start: float) -> AuditReport:
-    """Build a complete, valid AuditReport for a site that could not be fetched."""
     report_id = uuid.uuid4().hex
     sections: list[AuditSection] = []
     for key, weight in SCORE_WEIGHTS.items():
@@ -95,7 +86,7 @@ async def run_audit(raw_url: str) -> AuditReport:
     if not url:
         return _unreachable_report(raw_url, raw_url, "Empty or invalid URL provided.", start)
 
-    # Step 1: fetch HTML, robots.txt, sitemap.xml concurrently.
+    # Fetch the page and supporting files together.
     html_result, robots_rules = await asyncio.gather(
         fetch_html(url),
         get_robots_rules(url),
@@ -108,10 +99,10 @@ async def run_audit(raw_url: str) -> AuditReport:
     final_url = html_result.final_url or url
     sitemap_info = await get_sitemap_info(final_url, sitemap_hints=robots_rules.sitemap_urls)
 
-    # Step 2: parse once, share across all engines.
+    # Parse once and reuse the result across all engines.
     parsed = parse_html(html_result.text)
 
-    # Step 3: run engines concurrently.
+    # Score every engine concurrently.
     (
         crawler_section,
         js_section,
@@ -159,7 +150,7 @@ async def run_audit(raw_url: str) -> AuditReport:
     llm_enhanced = any(s.llm_enhanced for s in sections)
     llm_error = None
     if not llm_service.is_available():
-        llm_error = "GEMINI_API_KEY not configured — semantic checks used deterministic fallback scoring."
+        llm_error = "GROQ_API_KEY not configured — semantic checks used deterministic fallback scoring."
 
     duration_ms = (time.monotonic() - start) * 1000
 
@@ -196,5 +187,4 @@ async def run_audit(raw_url: str) -> AuditReport:
 
 
 async def _to_coro(value):
-    """Wrap a plain (synchronous) return value so it can sit in an asyncio.gather() call."""
     return value
