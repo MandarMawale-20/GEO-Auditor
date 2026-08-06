@@ -14,7 +14,7 @@ Built as a take-home submission for the **Product Developer (AI Products)** role
  - HTML report + text-first PDF export
  - Runs locally with no database or authentication
 
-![GEO Auditor report screenshot](docs/report-preview.png)
+![Audit report screenshot](images/report-screenshot.png)
 
 ## 1. Problem Statement
 
