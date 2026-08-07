@@ -64,16 +64,10 @@ class ParsedPage:
 def parse_html(raw_html: str) -> ParsedPage:
     soup = BeautifulSoup(raw_html or "", "lxml")
 
-    for tag in soup(["script", "style", "noscript"]):
-        tag.decompose()
-
-    visible_text = " ".join(soup.get_text(separator=" ").split())
-    word_count = len(_WORD_RE.findall(visible_text))
-
+    # Extract JSON-LD blocks before decomposing script tags (decompose
+    # removes them from the tree, so we must read them first).
     json_ld_blocks: list[dict] = []
-    for script_tag in BeautifulSoup(raw_html or "", "lxml").find_all(
-        "script", attrs={"type": "application/ld+json"}
-    ):
+    for script_tag in soup.find_all("script", attrs={"type": "application/ld+json"}):
         raw = script_tag.string or script_tag.get_text() or ""
         raw = raw.strip()
         if not raw:
@@ -90,6 +84,13 @@ def parse_html(raw_html: str) -> ParsedPage:
                 json_ld_blocks.extend([b for b in parsed["@graph"] if isinstance(b, dict)])
             else:
                 json_ld_blocks.append(parsed)
+
+    # Remove non-content tags for clean visible-text extraction.
+    for tag in soup(["script", "style", "noscript"]):
+        tag.decompose()
+
+    visible_text = " ".join(soup.get_text(separator=" ").split())
+    word_count = len(_WORD_RE.findall(visible_text))
 
     return ParsedPage(
         soup=soup,

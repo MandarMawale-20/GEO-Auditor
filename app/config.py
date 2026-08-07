@@ -42,7 +42,10 @@ SCORE_WEIGHTS: dict[str, int] = {
 }
 
 TOTAL_POSSIBLE_SCORE = sum(SCORE_WEIGHTS.values())
-assert TOTAL_POSSIBLE_SCORE == 100, "Scoring model must sum to exactly 100 points"
+if TOTAL_POSSIBLE_SCORE != 100:
+    raise ValueError(
+        f"Scoring model must sum to exactly 100 points, got {TOTAL_POSSIBLE_SCORE}"
+    )
 
 # Human-readable labels + which engine owns each category, for templates
 # and orchestration bookkeeping.

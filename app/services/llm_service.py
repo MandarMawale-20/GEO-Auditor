@@ -24,9 +24,11 @@ from typing import Any
 import httpx
 
 from app.config import settings
+from cachetools import TTLCache
 
 # cache key: (final_url, finding_type) -> parsed JSON/text result
-llm_cache: dict[tuple[str, str], dict[str, Any] | str] = {}
+# Stores up to 1000 entries, expires them after 1 hour (3600 seconds).
+llm_cache: TTLCache = TTLCache(maxsize=1000, ttl=3600)
 
 
 class LLMResult:
@@ -55,14 +57,10 @@ async def _call_groq(prompt: str, expect_json: bool) -> tuple[str | None, str | 
 
     payload: dict[str, Any] = {
         "model": settings.groq_model,
-        "messages": [{"role": "user", "parts": [{"text": prompt}]}],
+        "messages": [{"role": "user", "content": prompt}],
         "temperature": 0,
         "max_tokens": 1024,
     }
-
-    # Groq's OpenAI-compatible API uses "parts" for text, but the actual
-    # field name is "content". Build the correct message structure.
-    payload["messages"] = [{"role": "user", "content": prompt}]
 
     if expect_json:
         payload["response_format"] = {"type": "json_object"}
@@ -100,55 +98,16 @@ async def _call_groq(prompt: str, expect_json: bool) -> tuple[str | None, str | 
 
 
 def _strip_json_fences(text: str) -> str:
-    """Extract clean JSON from a model response that may include markdown
-    fences, backticks, or conversational preamble.
+    """Extract the first JSON object from text that may include markdown fences.
 
-    Strategy (tried in order):
-      1. Triple-backtick code block (```json ... ```)
-      2. Single-backtick inline code containing a JSON object (tries each,
-         returns the first that parses as valid JSON)
-      3. Individual balanced brace-pairs via regex (tries from last to first)
-      4. Fallback: first '{' to last '}' brace matching
+    Uses a simple greedy regex to find the first '{' to the last '}' — this
+    handles triple-backtick code blocks, inline backticks, and conversational
+    preamble in one pass.
     """
-    stripped = text.strip()
-
-    # --- 1. Triple-backtick fences -------------------------------------------
-    if "```" in stripped:
-        parts = stripped.split("```", 2)
-        if len(parts) >= 2:
-            inner = parts[1].strip()
-            if inner.lower().startswith("json"):
-                inner = inner[4:].strip()
-            stripped = inner
-
-    # --- 2. Single-backtick inline code that looks like JSON -----------------
-    for match in re.finditer(r"`([^`]+)`", stripped):
-        candidate = match.group(1).strip()
-        if candidate.startswith("{") and candidate.endswith("}"):
-            try:
-                json.loads(candidate)
-                return candidate
-            except json.JSONDecodeError:
-                continue
-
-    # --- 3. Try every balanced brace-pair found by regex ----------------------
-    matches = re.findall(r"\{[^{}]*\}", stripped, re.DOTALL)
-    if matches:
-        for candidate in reversed(matches):
-            candidate = candidate.strip()
-            try:
-                json.loads(candidate)
-                return candidate
-            except json.JSONDecodeError:
-                continue
-
-    # --- 4. Fallback: first { to last } brace matching --------------------
-    first_brace = stripped.find("{")
-    last_brace = stripped.rfind("}")
-    if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
-        return stripped[first_brace : last_brace + 1]
-
-    return stripped
+    match = re.search(r"\{.*\}", text, re.DOTALL)
+    if match:
+        return match.group(0)
+    return text.strip()
 
 
 async def get_json_completion(

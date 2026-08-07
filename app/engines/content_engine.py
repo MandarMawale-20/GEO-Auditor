@@ -38,37 +38,46 @@ def score_quote_readiness(parsed: ParsedPage) -> AuditSection:
     question_headings = [(h, p) for h, p in heading_pairs if is_question_heading(h.get_text(strip=True))]
 
     # --- Sub-check 1: question-style headings present (5 pts) ---
-    q_points = 5.0 if question_headings else 0.0
+    # Question-style headings are easy for AI systems to reuse.
+    question_heading_points = 5.0 if question_headings else 0.0
     section.findings.append(
-    """Deterministic checks for answer snippets, facts, and media balance."""
+        Finding(
+            category="quote_readiness",
+            severity=Severity.PASS if question_heading_points else Severity.WARNING,
+            title=(
+                f"Found {len(question_headings)} question-style heading(s)"
+                if question_heading_points
+                else "No question-style H2/H3 headings found"
+            ),
             why_it_matters=(
                 "AI answer engines match user questions against headings. Question-phrased "
                 "headings ('What is X?', 'How does X work?') are directly extractable as answers."
             ),
             evidence=(
-        # Question-style headings are easy for AI systems to reuse.
+                f"Example: \"{question_headings[0][0].get_text(strip=True)}\""
                 if question_headings
                 else f"Checked {len(heading_pairs)} H2/H3 headings; none were phrased as questions."
             ),
             recommendation="Rewrite key section headings as direct questions your customers actually ask.",
             copy_paste_fix="<h2>What is [Your Product]?</h2>\n<p>[Your Product] is a ... that helps [audience] ... by ....</p>"
-            if not q_points
+            if not question_heading_points
             else None,
             impact=ImpactLevel.HIGH,
             effort=EffortLevel.MEDIUM,
-            points_awarded=q_points,
+            points_awarded=question_heading_points,
             points_possible=5,
         )
     )
 
     # --- Sub-check 2: lead paragraph 20-50 words after a heading (5 pts) ---
-    good_lead = None
+    # Short, direct lead paragraphs tend to get cited.
+    valid_lead_paragraph = None
     for heading, para in question_headings or heading_pairs:
         word_count = len(para.split())
         if _WORD_RE_MIN <= word_count <= _WORD_RE_MAX:
-            good_lead = (heading.get_text(strip=True), para)
+            valid_lead_paragraph = (heading.get_text(strip=True), para)
             break
-    lead_points = 5.0 if good_lead else 0.0
+    lead_points = 5.0 if valid_lead_paragraph else 0.0
     section.findings.append(
         Finding(
             category="quote_readiness",
@@ -78,13 +87,13 @@ def score_quote_readiness(parsed: ParsedPage) -> AuditSection:
                 if lead_points
                 else "No heading is followed by a 20-50 word direct-answer paragraph"
             ),
-        # Short, direct lead paragraphs tend to get cited.
+            why_it_matters=(
                 "Inverted-pyramid style — answering the question immediately in a concise "
                 "paragraph — is exactly the shape AI systems extract for direct answers."
             ),
             evidence=(
-                f"Under \"{good_lead[0]}\": \"{good_lead[1][:160]}\""
-                if good_lead
+                f"Under \"{valid_lead_paragraph[0]}\": \"{valid_lead_paragraph[1][:160]}\""
+                if valid_lead_paragraph
                 else "Checked paragraphs following headings; none fell in the 20-50 word range."
             ),
             recommendation="Directly answer each heading's question in the first paragraph, in 20-50 words.",
@@ -96,6 +105,7 @@ def score_quote_readiness(parsed: ParsedPage) -> AuditSection:
     )
 
     # --- Sub-check 3: low fluff language (5 pts) ---
+    # Skip marketing fluff and look for concrete language.
     fluff_found = count_fluff_phrases(parsed.visible_text)
     fluff_points = 5.0 if not fluff_found else 0.0
     section.findings.append(
@@ -113,14 +123,14 @@ def score_quote_readiness(parsed: ParsedPage) -> AuditSection:
             ),
             evidence=(f"Detected phrases: {', '.join(fluff_found)}." if fluff_found else "No fluff phrases matched."),
             recommendation="Replace vague marketing language with concrete, specific claims and numbers.",
-        # Skip marketing fluff and look for concrete language.
+            impact=ImpactLevel.MEDIUM,
             effort=EffortLevel.MEDIUM,
             points_awarded=fluff_points,
             points_possible=5,
         )
     )
 
-    section.points_awarded = q_points + lead_points + fluff_points
+    section.points_awarded = question_heading_points + lead_points + fluff_points
     return section
 
 

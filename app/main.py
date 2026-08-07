@@ -12,11 +12,13 @@ import logging
 import sys
 
 from app.config import TOTAL_POSSIBLE_SCORE, settings
-from app.models import AuditReport
+from app.models import AuditReport, AuditRequest
 from app.orchestrator import run_audit
 from app.scoring import validate_total_weight
 from app.services import llm_service
 from app.services.pdf_service import generate_pdf_bytes
+
+from cachetools import TTLCache
 
 validate_total_weight()
 
@@ -71,7 +73,8 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 # In-memory cache for reports used by the PDF endpoint.
-REPORT_CACHE: dict[str, AuditReport] = {}
+# Stores up to 1000 reports, expires them after 1 hour (3600 seconds).
+REPORT_CACHE: TTLCache = TTLCache(maxsize=1000, ttl=3600)
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -88,7 +91,8 @@ async def index(request: Request) -> HTMLResponse:
 
 @app.post("/audit", response_class=HTMLResponse)
 async def audit(request: Request, url: str = Form(...)) -> HTMLResponse:
-    report = await run_audit(url)
+    validated_request = AuditRequest(url=url)
+    report = await run_audit(validated_request.url)
 
     # Cache the report so the PDF endpoint can retrieve it without re-running.
     if report.report_id:
@@ -134,6 +138,11 @@ async def download_pdf(report_id: str) -> Response:
 @app.get("/report/sample/{report_id}", response_class=HTMLResponse)
 async def sample_report(request: Request, report_id: str) -> HTMLResponse:
     safe_id = "".join(c for c in report_id if c.isalnum() or c in ("_", "-"))
+    if not safe_id:
+        return HTMLResponse(
+            content="<h1>Invalid sample ID</h1><p><a href='/'>Back to GEO Auditor</a></p>",
+            status_code=400,
+        )
     candidate = SAMPLE_REPORTS_DIR / f"{safe_id}.html"
     if not candidate.exists():
         return HTMLResponse(
@@ -155,10 +164,3 @@ async def health() -> JSONResponse:
             "app_env": settings.app_env,
         }
     )
-
-
-@app.get("/debug-log")
-async def debug_log() -> JSONResponse:
-    logger.info("DEBUG ENDPOINT HIT")
-    print("PRINT ENDPOINT HIT", flush=True)
-    return JSONResponse({"ok": True})

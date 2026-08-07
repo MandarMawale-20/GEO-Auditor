@@ -31,10 +31,10 @@ def _parse_iso_date(value: str) -> datetime | None:
     try:
         # Handle trailing 'Z' which fromisoformat rejects on older Pythons.
         normalized = value.replace("Z", "+00:00")
-        dt = datetime.fromisoformat(normalized)
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        return dt
+        parsed_date = datetime.fromisoformat(normalized)
+        if parsed_date.tzinfo is None:
+            parsed_date = parsed_date.replace(tzinfo=timezone.utc)
+        return parsed_date
     except ValueError:
         return None
 

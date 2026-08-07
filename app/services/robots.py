@@ -74,7 +74,8 @@ def _parse_robots_txt(raw_text: str) -> tuple[dict[str, list[str]], list[str]]:
                 else:
                     disallow_by_agent.setdefault(agent_name, [])
         elif field_name == "sitemap":
-            sitemaps.append(value)
+            full_sitemap_url = urljoin(robots_url, value)
+            sitemaps.append(full_sitemap_url)
 
     return disallow_by_agent, sitemaps
 

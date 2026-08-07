@@ -36,26 +36,16 @@ def collect_findings(sections: list[AuditSection]) -> list[Finding]:
     return findings
 
 
-def select_top_priorities(findings: list[Finding], limit: int = 3) -> list[Finding]:
-    actionable = [f for f in findings if f.severity in (Severity.CRITICAL, Severity.WARNING)]
-    actionable.sort(key=lambda f: (f.priority_score, f.points_possible - f.points_awarded), reverse=True)
-    return actionable[:limit]
-
-
 def build_priority_roadmap(findings: list[Finding]) -> list[Finding]:
+    """All actionable findings sorted by impact-vs-effort priority score, worst-first."""
     actionable = [f for f in findings if f.severity in (Severity.CRITICAL, Severity.WARNING)]
     actionable.sort(key=lambda f: (f.priority_score, f.points_possible - f.points_awarded), reverse=True)
     return actionable
 
 
-def _finding_evidence(sections: list[AuditSection], category: str, title_snippet: str) -> Finding | None:
-    for section in sections:
-        if section.key != category:
-            continue
-        for finding in section.findings:
-            if title_snippet.lower() in finding.title.lower():
-                return finding
-    return None
+def select_top_priorities(findings: list[Finding], limit: int = 3) -> list[Finding]:
+    """Top N findings for the Monday-morning highlight row."""
+    return build_priority_roadmap(findings)[:limit]
 
 
 def build_answerability_matrix(sections: list[AuditSection], page_text: str) -> list[AnswerabilityRow]:

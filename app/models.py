@@ -85,9 +85,12 @@ class Finding(BaseModel):
     @property
     def priority_score(self) -> float:
         """Higher = fix first. Impact/effort collapsed to a single sortable number."""
-        impact_weight = {ImpactLevel.HIGH: 3, ImpactLevel.MEDIUM: 2, ImpactLevel.LOW: 1}
-        effort_weight = {EffortLevel.LOW: 3, EffortLevel.MEDIUM: 2, EffortLevel.HIGH: 1}
-        return impact_weight[self.impact] * effort_weight[self.effort]
+        impact_str = self.impact.value if isinstance(self.impact, Enum) else str(self.impact)
+        effort_str = self.effort.value if isinstance(self.effort, Enum) else str(self.effort)
+
+        impact_weight = {"high": 3, "medium": 2, "low": 1}
+        effort_weight = {"low": 3, "medium": 2, "high": 1}
+        return impact_weight.get(impact_str, 1) * effort_weight.get(effort_str, 1)
 
 
 class AuditSection(BaseModel):

@@ -209,7 +209,18 @@ async def score_citation_snippet_quality(parsed: ParsedPage, final_url: str) -> 
         is_strong, reason = _fallback_citation_quality(candidate)
 
     points = 10.0 if is_strong else 0.0
-        """Hybrid semantic checks with an LLM path and a deterministic fallback."""
+    section.points_awarded = points
+    section.llm_enhanced = llm_used
+    # Hybrid semantic checks with an LLM path and a deterministic fallback.
+    section.findings.append(
+        Finding(
+            category="ai_citation_snippet_quality",
+            severity=Severity.PASS if is_strong else Severity.WARNING,
+            title=(
+                "Found a strong, citation-ready snippet"
+                if is_strong
+                else "No strong citation-ready snippet found"
+            ),
             why_it_matters=(
                 "AI answer engines often quote a single self-contained paragraph verbatim. "
                 "Without one, they must stitch together a summary themselves — or skip citing you."

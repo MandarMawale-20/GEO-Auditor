@@ -100,7 +100,7 @@ async def run_audit(raw_url: str) -> AuditReport:
     sitemap_info = await get_sitemap_info(final_url, sitemap_hints=robots_rules.sitemap_urls)
 
     # Parse once and reuse the result across all engines.
-    parsed = parse_html(html_result.text)
+    parsed_document = parse_html(html_result.text)
 
     # Score every engine concurrently.
     (
@@ -115,16 +115,16 @@ async def run_audit(raw_url: str) -> AuditReport:
         query_coverage_section,
         citation_section,
     ) = await asyncio.gather(
-        _to_coro(technical_engine.score_ai_crawler_accessibility(robots_rules)),
-        _to_coro(technical_engine.score_js_rendering_risk(parsed)),
-        _to_coro(technical_engine.score_freshness_signals(parsed, sitemap_info)),
-        _to_coro(entity_engine.score_structured_entity_data(parsed)),
-        entity_engine.score_entity_completeness_trust(parsed, final_url),
-        _to_coro(content_engine.score_quote_readiness(parsed)),
-        _to_coro(content_engine.score_fact_density(parsed)),
-        _to_coro(content_engine.score_media_to_text_balance(parsed)),
-        intelligence_engine.score_query_coverage(parsed, final_url),
-        intelligence_engine.score_citation_snippet_quality(parsed, final_url),
+        asyncio.to_thread(technical_engine.score_ai_crawler_accessibility, robots_rules),
+        asyncio.to_thread(technical_engine.score_js_rendering_risk, parsed_document),
+        asyncio.to_thread(technical_engine.score_freshness_signals, parsed_document, sitemap_info),
+        asyncio.to_thread(entity_engine.score_structured_entity_data, parsed_document),
+        entity_engine.score_entity_completeness_trust(parsed_document, final_url),
+        asyncio.to_thread(content_engine.score_quote_readiness, parsed_document),
+        asyncio.to_thread(content_engine.score_fact_density, parsed_document),
+        asyncio.to_thread(content_engine.score_media_to_text_balance, parsed_document),
+        intelligence_engine.score_query_coverage(parsed_document, final_url),
+        intelligence_engine.score_citation_snippet_quality(parsed_document, final_url),
     )
 
     sections = [
@@ -145,7 +145,7 @@ async def run_audit(raw_url: str) -> AuditReport:
     all_findings = collect_findings(sections)
     top_priorities = select_top_priorities(all_findings, limit=3)
     _ = build_priority_roadmap(all_findings)  # available for template use via all_findings sort if needed
-    answerability_matrix = build_answerability_matrix(sections, parsed.visible_text)
+    answerability_matrix = build_answerability_matrix(sections, parsed_document.visible_text)
 
     llm_enhanced = any(s.llm_enhanced for s in sections)
     llm_error = None
@@ -184,7 +184,3 @@ async def run_audit(raw_url: str) -> AuditReport:
         audit_duration_ms=round(duration_ms, 1),
         report_id=report_id,
     )
-
-
-async def _to_coro(value):
-    return value

@@ -1,6 +1,7 @@
 """Deterministic checks for entity data and trust signals."""
 from __future__ import annotations
 
+import asyncio
 from urllib.parse import urljoin
 
 import httpx
@@ -196,8 +197,10 @@ async def score_entity_completeness_trust(parsed: ParsedPage, base_url: str) -> 
     about_href = page_exists_link(parsed.soup, ("about", "/about", "about-us"))
     contact_href = page_exists_link(parsed.soup, ("contact", "/contact", "contact-us"))
 
-    about_ok = await _page_returns_200(base_url, about_href) if about_href else False
-    contact_ok = await _page_returns_200(base_url, contact_href) if contact_href else False
+    (about_ok, contact_ok) = await asyncio.gather(
+        _page_returns_200(base_url, about_href) if about_href else asyncio.sleep(0, result=False),
+        _page_returns_200(base_url, contact_href) if contact_href else asyncio.sleep(0, result=False),
+    )
 
     trust_points = 0.0
     if about_ok or contact_ok:

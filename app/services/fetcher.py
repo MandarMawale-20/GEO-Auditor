@@ -7,7 +7,10 @@ Never raises — all failure modes are captured in FetchResult.error.
 """
 from __future__ import annotations
 
+import ipaddress
+import socket
 import time
+from urllib.parse import urlparse
 
 import httpx
 
@@ -25,11 +28,29 @@ def normalize_url(raw_url: str) -> str:
     return candidate
 
 
+def is_public_url(url: str) -> bool:
+    """Return True only if the URL's resolved IP is globally routable.
+
+    Guarding against private/loopback/link-local IPs prevents SSRF attacks
+    that could probe internal services (e.g. cloud metadata endpoints).
+    """
+    hostname = urlparse(url).hostname
+    if not hostname:
+        return False
+    try:
+        ip = socket.gethostbyname(hostname)
+        return ipaddress.ip_address(ip).is_global
+    except (socket.error, ValueError):
+        return False
+
+
 async def fetch_html(raw_url: str) -> FetchResult:
     """Fetch the main HTML page for a URL, capturing latency and size."""
     url = normalize_url(raw_url)
     if not url:
         return FetchResult(url=raw_url, ok=False, error="Empty or invalid URL provided.")
+    if not is_public_url(url):
+        return FetchResult(url=url, ok=False, error="URL must resolve to a public IP address.")
 
     start = time.monotonic()
     try:
@@ -41,10 +62,12 @@ async def fetch_html(raw_url: str) -> FetchResult:
             response = await client.get(url)
             elapsed_ms = (time.monotonic() - start) * 1000
 
-            body = response.text
-            if len(body.encode("utf-8", errors="ignore")) > settings.max_html_bytes:
+            body_bytes = response.content if response.content else b""
+            if len(body_bytes) > settings.max_html_bytes:
                 # Truncate defensively; extremely large pages shouldn't blow memory.
-                body = body[: settings.max_html_bytes]
+                body_bytes = body_bytes[: settings.max_html_bytes]
+
+            body = body_bytes.decode("utf-8", errors="ignore")
 
             return FetchResult(
                 url=url,
@@ -52,7 +75,7 @@ async def fetch_html(raw_url: str) -> FetchResult:
                 status_code=response.status_code,
                 ok=response.status_code < 400,
                 text=body,
-                content_length=len(body.encode("utf-8", errors="ignore")),
+                content_length=len(body_bytes),
                 elapsed_ms=round(elapsed_ms, 2),
                 redirect_count=len(response.history),
                 headers=dict(response.headers),

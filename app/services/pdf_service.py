@@ -30,6 +30,7 @@ from reportlab.platypus import (
 from app.models import AuditReport
 import logging
 import traceback
+from xml.sax.saxutils import escape as xml_escape
 
 logger = logging.getLogger("geo_auditor.pdf")
 
@@ -41,77 +42,87 @@ _MARGIN = inch  # 1-inch margins on all sides
 
 _HEADER_TEXT = "GEO Auditor"
 
-# ---------------------------------------------------------------------------
-# Styles  —  modify built-in names in place; add new unique names
-# ---------------------------------------------------------------------------
-_styles = getSampleStyleSheet()
 
-# Override built-in styles (getSampleStyleSheet pre-defines these).
-_styles["Title"].fontSize = 24
-_styles["Title"].leading = 28
-_styles["Title"].spaceAfter = 6
-_styles["Title"].alignment = TA_CENTER
-_styles["Title"].textColor = colors.black
+def _build_styles():
+    """Create a fresh copy of ReportLab styles per PDF generation.
 
-_styles.add(
-    ParagraphStyle(
-        name="Subtitle",
-        parent=_styles["Normal"],
-        fontSize=12,
-        leading=16,
-        spaceAfter=18,
-        alignment=TA_CENTER,
-        textColor=colors.HexColor("#666666"),
+    Avoids mutating the global getSampleStyleSheet() at import time, which
+    would side-affect any other code relying on the default styles.
+    """
+    styles = getSampleStyleSheet()
+
+    # Override built-in styles.
+    styles["Title"].fontSize = 24
+    styles["Title"].leading = 28
+    styles["Title"].spaceAfter = 6
+    styles["Title"].alignment = TA_CENTER
+    styles["Title"].textColor = colors.black
+
+    styles.add(
+        ParagraphStyle(
+            name="Subtitle",
+            parent=styles["Normal"],
+            fontSize=12,
+            leading=16,
+            spaceAfter=18,
+            alignment=TA_CENTER,
+            textColor=colors.HexColor("#666666"),
+        )
     )
-)
 
-_styles["Normal"].fontSize = 10
-_styles["Normal"].leading = 14
-_styles["Normal"].spaceAfter = 4
-_styles["Normal"].textColor = colors.black
-_styles["Normal"].alignment = TA_LEFT
+    styles["Normal"].fontSize = 10
+    styles["Normal"].leading = 14
+    styles["Normal"].spaceAfter = 4
+    styles["Normal"].textColor = colors.black
+    styles["Normal"].alignment = TA_LEFT
 
-# Add new styles with unique names.
-_styles.add(
-    ParagraphStyle(
-        name="SectionHeading",
-        parent=_styles["Heading1"],
-        fontSize=16,
-        leading=22,
-        spaceBefore=18,
-        spaceAfter=10,
-        textColor=colors.black,
-        backColor=colors.white,
+    # Add new styles with unique names.
+    styles.add(
+        ParagraphStyle(
+            name="SectionHeading",
+            parent=styles["Heading1"],
+            fontSize=16,
+            leading=22,
+            spaceBefore=18,
+            spaceAfter=10,
+            textColor=colors.black,
+            backColor=colors.white,
+        )
     )
-)
-_styles["SectionHeading"].underline = True
+    styles["SectionHeading"].underline = True
 
-_styles.add(
-    ParagraphStyle(
-        name="SmallText",
-        parent=_styles["Normal"],
-        fontSize=8,
-        leading=12,
-        spaceAfter=2,
-        textColor=colors.HexColor("#555555"),
-        alignment=TA_LEFT,
+    styles.add(
+        ParagraphStyle(
+            name="SmallText",
+            parent=styles["Normal"],
+            fontSize=8,
+            leading=12,
+            spaceAfter=2,
+            textColor=colors.HexColor("#555555"),
+            alignment=TA_LEFT,
+        )
     )
-)
-_styles.add(
-    ParagraphStyle(
-        name="CodeBlock",
-        parent=_styles["Normal"],
-        fontName="Courier",
-        fontSize=8,
-        leading=10,
-        textColor=colors.HexColor("#333333"),
-        backColor=colors.HexColor("#f4f4f4"),
-        leftIndent=8,
-        rightIndent=8,
-        spaceBefore=4,
-        spaceAfter=4,
+    styles.add(
+        ParagraphStyle(
+            name="CodeBlock",
+            parent=styles["Normal"],
+            fontName="Courier",
+            fontSize=8,
+            leading=10,
+            textColor=colors.HexColor("#333333"),
+            backColor=colors.HexColor("#f4f4f4"),
+            leftIndent=8,
+            rightIndent=8,
+            spaceBefore=4,
+            spaceAfter=4,
+        )
     )
-)
+
+    return styles
+
+
+# Module-level default styles for functions that don't receive them as parameters.
+_styles = _build_styles()
 
 
 # ---------------------------------------------------------------------------
@@ -119,12 +130,7 @@ _styles.add(
 # ---------------------------------------------------------------------------
 def _escape_xml(text: str) -> str:
     """Escape characters that are special in reportlab's Paragraph XML markup."""
-    return (
-        str(text)
-        .replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-    )
+    return xml_escape(str(text))
 
 
 def _wrap_url(url: str) -> str:
@@ -396,7 +402,6 @@ def _build_story(report: AuditReport) -> list:
 def generate_pdf_bytes(report: AuditReport) -> bytes:
     """Render an AuditReport into a PDF document and return the raw bytes."""
     logger.info("Generating PDF for url=%s report_id=%s", report.url, getattr(report, "report_id", None))
-    print(f"GENERATING PDF for url={report.url} report_id={getattr(report, 'report_id', None)}", flush=True)
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         buffer,
@@ -421,14 +426,9 @@ def generate_pdf_bytes(report: AuditReport) -> bytes:
             onLaterPages=_make_page_canvas,
         )
     except Exception:  # pragma: no cover - surface traceback to logs
-        tb = traceback.format_exc()
-        logger.error("PDF build failed for url=%s report_id=%s:\n%s", report.url, getattr(report, "report_id", None), tb)
-        # Also print the traceback to stdout so it's visible even when logging
-        # configuration prevents logger output from appearing in the terminal.
-        print("PDF build failed:\n" + tb, flush=True)
+        logger.error("PDF build failed for url=%s report_id=%s:\n%s", report.url, getattr(report, "report_id", None))
         # Re-raise so the caller can return a 500 to the client.
         raise
 
     logger.info("PDF generation complete for report_id=%s", getattr(report, "report_id", None))
-    print(f"PDF generation complete for report_id={getattr(report, 'report_id', None)}", flush=True)
     return buffer.getvalue()
