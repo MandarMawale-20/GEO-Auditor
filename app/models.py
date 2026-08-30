@@ -4,9 +4,8 @@ Pydantic v2 models shared across services, engines, scoring, and templates.
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any
 
-from pydantic import BaseModel, Field, HttpUrl
+from pydantic import BaseModel, Field
 
 
 class Severity(str, Enum):
@@ -38,7 +37,17 @@ class AnswerabilityStatus(str, Enum):
 # Fetch layer
 # --------------------------------------------------------------------------
 class FetchResult(BaseModel):
-    """Raw result of fetching a single resource (HTML page, robots.txt, sitemap)."""
+    """Raw result of fetching a single resource (HTML page, robots.txt, sitemap).
+
+    Size semantics:
+      * ``content_length`` — value of the HTTP ``Content-Length`` header, if
+        present and trustworthy.  May be ``None`` when absent or when the body
+        was streamed without a Content-Length.
+      * ``bytes_observed`` — total bytes actually read from the response stream.
+      * ``bytes_retained`` — bytes kept after applying the size cap (``<= max``).
+      * ``truncated`` — ``True`` when the response exceeded the size limit and
+        was cut short.
+    """
 
     url: str
     final_url: str | None = None
@@ -46,6 +55,9 @@ class FetchResult(BaseModel):
     ok: bool = False
     text: str | None = None
     content_length: int | None = None
+    bytes_observed: int | None = None
+    bytes_retained: int | None = None
+    truncated: bool = False
     elapsed_ms: float | None = None
     redirect_count: int = 0
     error: str | None = None
@@ -62,13 +74,20 @@ class FetchHealth(BaseModel):
     html_size_bytes: int | None = None
     reachable: bool = True
     error_message: str | None = None
+    bytes_observed: int | None = None
+    truncated: bool = False
 
 
 # --------------------------------------------------------------------------
 # Findings
 # --------------------------------------------------------------------------
 class Finding(BaseModel):
-    """A single, evidence-backed audit finding tied to one scoring category."""
+    """A single, evidence-backed audit finding tied to one scoring category.
+
+    The ``dimension`` field optionally ties a finding to a structured query-
+    coverage dimension (e.g. ``"what"``, ``"who"``) so that answerability
+    matrix construction does not depend on matching display titles.
+    """
 
     category: str
     severity: Severity
@@ -81,6 +100,7 @@ class Finding(BaseModel):
     effort: EffortLevel
     points_awarded: float = 0
     points_possible: float = 0
+    dimension: str | None = None
 
     @property
     def priority_score(self) -> float:
@@ -133,6 +153,7 @@ class AuditReport(BaseModel):
     answerability_matrix: list[AnswerabilityRow]
     top_priorities: list[Finding]
     all_findings: list[Finding]
+    priority_roadmap: list[Finding] = Field(default_factory=list)
     llm_enhanced: bool
     llm_error: str | None = None
     audit_duration_ms: float
@@ -140,7 +161,3 @@ class AuditReport(BaseModel):
     report_id: str | None = None
 
     model_config = {"use_enum_values": False}
-
-
-class AuditRequest(BaseModel):
-    url: str = Field(..., min_length=3, max_length=2048)

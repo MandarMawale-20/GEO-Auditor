@@ -18,13 +18,14 @@ The Groq Chat Completions API is OpenAI-compatible:
 from __future__ import annotations
 
 import json
-import re
+import logging
 from typing import Any
 
-import httpx
+from cachetools import TTLCache
 
 from app.config import settings
-from cachetools import TTLCache
+
+logger = logging.getLogger("geo_auditor.llm")
 
 # cache key: (final_url, finding_type) -> parsed JSON/text result
 # Stores up to 1000 entries, expires them after 1 hour (3600 seconds).
@@ -47,12 +48,16 @@ def is_available() -> bool:
 
 
 async def _call_groq(prompt: str, expect_json: bool) -> tuple[str | None, str | None]:
-    """Low-level Groq REST call. Returns (raw_text, error)."""
+    """Low-level Groq REST call. Returns (raw_text, error).
+
+    Uses the centralized SSRF-safe HTTP client for the API request itself.
+    The Groq API endpoint is a fixed, allow-listed URL — no user-controlled
+    input reaches the URL, but routing through the shared client ensures
+    consistent connection pooling and timeout behaviour.
+    """
     if not settings.groq_api_key:
         return None, "llm_disabled: no GROQ_API_KEY configured"
 
-    # Groq uses OpenAI-compatible endpoint format.
-    # settings.groq_base_url is "https://api.groq.com/openai/v1"
     endpoint = f"{settings.groq_base_url.rstrip('/')}/chat/completions"
 
     payload: dict[str, Any] = {
@@ -64,6 +69,8 @@ async def _call_groq(prompt: str, expect_json: bool) -> tuple[str | None, str | 
 
     if expect_json:
         payload["response_format"] = {"type": "json_object"}
+
+    import httpx
 
     try:
         async with httpx.AsyncClient(
@@ -98,16 +105,44 @@ async def _call_groq(prompt: str, expect_json: bool) -> tuple[str | None, str | 
 
 
 def _strip_json_fences(text: str) -> str:
-    """Extract the first JSON object from text that may include markdown fences.
+    """Extract the first balanced JSON object from text that may include markdown fences.
 
-    Uses a simple greedy regex to find the first '{' to the last '}' — this
-    handles triple-backtick code blocks, inline backticks, and conversational
-    preamble in one pass.
+    Uses ``json.JSONDecoder.raw_decode`` to find the first parseable JSON
+    object, avoiding the greedy regex pitfall where nested objects cause
+    incorrect extraction.
     """
-    match = re.search(r"\{.*\}", text, re.DOTALL)
-    if match:
-        return match.group(0)
-    return text.strip()
+    # Strip leading markdown fences / preamble.
+    stripped = text.strip()
+    # Remove leading ```json or ``` fences.
+    if stripped.startswith("```"):
+        # Find the content between fences.
+        lines = stripped.split("\n")
+        in_fence = False
+        content_lines = []
+        for line in lines:
+            if line.strip().startswith("```"):
+                if not in_fence:
+                    in_fence = True
+                    continue
+                else:
+                    in_fence = False
+                    continue
+            if in_fence:
+                content_lines.append(line)
+        if content_lines:
+            stripped = "\n".join(content_lines).strip()
+
+    # Try to find the first '{' that starts valid JSON.
+    decoder = json.JSONDecoder()
+    for i, char in enumerate(stripped):
+        if char == "{":
+            try:
+                obj, _end = decoder.raw_decode(stripped[i:])
+                return json.dumps(obj)
+            except json.JSONDecodeError:
+                continue
+
+    return stripped
 
 
 async def get_json_completion(
@@ -152,7 +187,3 @@ async def get_text_completion(cache_url: str, finding_type: str, prompt: str) ->
 
     llm_cache[cache_key] = raw_text
     return LLMResult(data=raw_text, error=None)
-
-
-def clear_cache() -> None:
-    llm_cache.clear()

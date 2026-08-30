@@ -8,6 +8,9 @@ Scores:
 Uses Groq (OpenAI-compatible Chat Completions API) when GROQ_API_KEY is
 configured; otherwise falls back to keyword/heuristic scoring so the audit
 always completes.
+
+Both functions are async-safe: they operate on the immutable
+:class:`ParsedPage` data structure and do not traverse a BeautifulSoup tree.
 """
 from __future__ import annotations
 
@@ -16,7 +19,7 @@ import re
 from app.config import CATEGORY_META
 from app.models import AuditSection, EffortLevel, Finding, ImpactLevel, Severity
 from app.services import llm_service
-from app.services.html_utils import ParsedPage, find_best_citation_paragraph
+from app.services.html_utils import ParsedPage
 
 _DIMENSIONS = ("what", "who", "problem", "outcome")
 _DIMENSION_LABELS = {
@@ -90,7 +93,9 @@ def _fallback_query_coverage(page_text: str) -> dict:
     }
 
 
-async def score_query_coverage(parsed: ParsedPage, final_url: str) -> AuditSection:
+async def score_query_coverage(
+    parsed: ParsedPage, final_url: str, llm_enabled: bool = False
+) -> AuditSection:
     meta = CATEGORY_META["query_coverage"]
     section = AuditSection(
         key="query_coverage",
@@ -102,7 +107,7 @@ async def score_query_coverage(parsed: ParsedPage, final_url: str) -> AuditSecti
     llm_used = False
     result_data: dict | None = None
 
-    if llm_service.is_available():
+    if llm_enabled and llm_service.is_available():
         prompt = _build_query_coverage_prompt(parsed.visible_text)
         llm_result = await llm_service.get_json_completion(final_url, "query_coverage", prompt)
         if llm_result.ok and isinstance(llm_result.data, dict):
@@ -127,6 +132,7 @@ async def score_query_coverage(parsed: ParsedPage, final_url: str) -> AuditSecti
         section.findings.append(
             Finding(
                 category="query_coverage",
+                dimension=dimension,  # structured field for answerability matrix
                 severity=Severity.PASS if answered else Severity.WARNING,
                 title=f"{_DIMENSION_LABELS[dimension]}: {'answered' if answered else 'not clearly answered'}",
                 why_it_matters=(
@@ -179,7 +185,9 @@ def _fallback_citation_quality(candidate_paragraph: str | None) -> tuple[bool, s
     return False, "Heuristic: paragraph is well-sized but lacks a measurable benefit or number."
 
 
-async def score_citation_snippet_quality(parsed: ParsedPage, final_url: str) -> AuditSection:
+async def score_citation_snippet_quality(
+    parsed: ParsedPage, final_url: str, llm_enabled: bool = False
+) -> AuditSection:
     meta = CATEGORY_META["ai_citation_snippet_quality"]
     section = AuditSection(
         key="ai_citation_snippet_quality",
@@ -188,12 +196,13 @@ async def score_citation_snippet_quality(parsed: ParsedPage, final_url: str) -> 
         points_possible=10,
     )
 
-    candidate = find_best_citation_paragraph(parsed.soup)
+    # Use the pre-extracted citation paragraph — no soup traversal needed.
+    candidate = parsed.citation_paragraph
     llm_used = False
     is_strong: bool
     reason: str
 
-    if llm_service.is_available() and candidate:
+    if llm_enabled and llm_service.is_available() and candidate:
         prompt = _build_citation_prompt(candidate, parsed.visible_text)
         llm_result = await llm_service.get_json_completion(final_url, "citation_snippet", prompt)
         if llm_result.ok and isinstance(llm_result.data, dict):
@@ -211,10 +220,10 @@ async def score_citation_snippet_quality(parsed: ParsedPage, final_url: str) -> 
     points = 10.0 if is_strong else 0.0
     section.points_awarded = points
     section.llm_enhanced = llm_used
-    # Hybrid semantic checks with an LLM path and a deterministic fallback.
     section.findings.append(
         Finding(
             category="ai_citation_snippet_quality",
+            dimension=None,
             severity=Severity.PASS if is_strong else Severity.WARNING,
             title=(
                 "Found a strong, citation-ready snippet"
@@ -225,7 +234,9 @@ async def score_citation_snippet_quality(parsed: ParsedPage, final_url: str) -> 
                 "AI answer engines often quote a single self-contained paragraph verbatim. "
                 "Without one, they must stitch together a summary themselves — or skip citing you."
             ),
-            evidence=(f'Candidate: "{candidate}"' if candidate else "No 20-60 word paragraph found.") + f" — {reason}",
+            evidence=(
+                f'Candidate: "{candidate}"' if candidate else "No 20-60 word paragraph found."
+            ) + f" — {reason}",
             recommendation=(
                 "No action needed."
                 if is_strong

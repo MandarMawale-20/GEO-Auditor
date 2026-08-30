@@ -4,6 +4,10 @@ Sitemap discovery and freshness extraction.
 Looks up /sitemap.xml (or a sitemap URL declared in robots.txt), and
 extracts the most recent <lastmod> value found, used by the Freshness
 Signals category.
+
+All sitemap URLs — whether discovered from robots.txt or constructed by
+default — are validated through the centralized SSRF-safe HTTP client
+before any request is made.
 """
 from __future__ import annotations
 
@@ -12,7 +16,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from urllib.parse import urljoin, urlparse
 
-from app.services.fetcher import fetch_text_resource
+from app.services.http_client import safe_get_text
+from app.utils import parse_iso_datetime
 
 _LASTMOD_RE = re.compile(r"<lastmod>\s*([^<\s]+)\s*</lastmod>", re.IGNORECASE)
 
@@ -26,21 +31,14 @@ class SitemapResult:
     url_count: int = 0
 
 
-def _parse_iso_date(value: str) -> datetime | None:
-    value = value.strip()
-    try:
-        # Handle trailing 'Z' which fromisoformat rejects on older Pythons.
-        normalized = value.replace("Z", "+00:00")
-        parsed_date = datetime.fromisoformat(normalized)
-        if parsed_date.tzinfo is None:
-            parsed_date = parsed_date.replace(tzinfo=timezone.utc)
-        return parsed_date
-    except ValueError:
-        return None
+async def get_sitemap_info(
+    page_url: str, sitemap_hints: list[str] | None = None
+) -> SitemapResult:
+    """Try declared sitemap URLs first, then fall back to /sitemap.xml.
 
-
-async def get_sitemap_info(page_url: str, sitemap_hints: list[str] | None = None) -> SitemapResult:
-    """Try declared sitemap URLs first, then fall back to /sitemap.xml."""
+    Every candidate URL is validated by the centralized SSRF-safe client,
+    including redirect destinations.
+    """
     parsed = urlparse(page_url)
     if not parsed.scheme or not parsed.netloc:
         return SitemapResult(exists=False, fetch_error="Invalid base URL for sitemap lookup.")
@@ -52,12 +50,12 @@ async def get_sitemap_info(page_url: str, sitemap_hints: list[str] | None = None
 
     last_error: str | None = None
     for candidate_url in candidates:
-        result = await fetch_text_resource(candidate_url)
+        result = await safe_get_text(candidate_url, allow_redirects=True, max_redirects=5)
         if result.ok and result.text:
             lastmods = [
                 dt
                 for raw in _LASTMOD_RE.findall(result.text)
-                if (dt := _parse_iso_date(raw)) is not None
+                if (dt := parse_iso_datetime(raw)) is not None
             ]
             most_recent = max(lastmods) if lastmods else None
             url_count = result.text.lower().count("<url>")

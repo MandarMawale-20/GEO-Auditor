@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>GEO Report</title>
+  <meta name="description" content="Technical GEO audit report with actionable findings for AI search visibility.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="/static/style.css?v=3">
+  <link rel="icon" href="/static/favicon.svg?v=2" type="image/svg+xml">
+  <link rel="alternate icon" href="/static/favicon.ico?v=2" type="image/png">
+  <meta name="api-base" content="https://geo-auditor-api.onrender.com">
+
+  <!-- ===== SEO / Social ===== -->
+  <link rel="canonical" href="https://geoauditor.pages.dev/report.html">
+  <meta name="robots" content="index, follow">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="GEO Auditor">
+  <meta property="og:title" content="GEO Report — GEO Auditor">
+  <meta property="og:description" content="Technical GEO audit report with actionable findings for AI search visibility.">
+  <meta property="og:url" content="https://geoauditor.pages.dev/report.html">
+  <meta property="og:image" content="https://geoauditor.pages.dev/static/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="GEO Report — GEO Auditor">
+  <meta name="twitter:description" content="Technical GEO audit report with actionable findings for AI search visibility.">
+  <meta name="twitter:image" content="https://geoauditor.pages.dev/static/og-image.png">
+
+  <!-- ===== Structured data (SEO + GEO) ===== -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "WebSite",
+        "@id": "https://geoauditor.pages.dev/#website",
+        "url": "https://geoauditor.pages.dev/",
+        "name": "GEO Auditor",
+        "description": "Technical audits for AI search readiness.",
+        "publisher": { "@id": "https://geoauditor.pages.dev/#organization" },
+        "inLanguage": "en"
+      },
+      {
+        "@type": "Organization",
+        "@id": "https://geoauditor.pages.dev/#organization",
+        "url": "https://geoauditor.pages.dev/",
+        "name": "GEO Auditor",
+        "logo": { "@type": "ImageObject", "url": "https://geoauditor.pages.dev/static/favicon.svg" },
+        "sameAs": [ "https://github.com/mandar-mawale/geo-auditor" ]
+      },
+      {
+        "@type": "WebApplication",
+        "@id": "https://geoauditor.pages.dev/#app",
+        "url": "https://geoauditor.pages.dev/",
+        "name": "GEO Auditor",
+        "applicationCategory": "BusinessApplication",
+        "operatingSystem": "Web",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+        "description": "Free generative engine optimization (GEO) audit tool that scores how well a website is optimized for AI search engines and answer engines.",
+        "publisher": { "@id": "https://geoauditor.pages.dev/#organization" },
+        "inLanguage": "en"
+      }
+    ]
+  }
+  </script>
+
+  <script defer src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token": "YOUR_CWA_TOKEN_HERE"}'></script>
+</head>
+<body>
+  <div class="bg-ambients" aria-hidden="true">
+    <div class="bg-shape bg-shape--teal"></div>
+    <div class="bg-shape bg-shape--warm"></div>
+    <div class="bg-shape bg-shape--amber"></div>
+  </div>
+
+  <!-- ===== Header ===== -->
+  <header class="site-header no-print">
+    <div class="container header-inner">
+      <a href="/" class="logo">
+        <span class="logo-mark">G</span>
+        GEO Auditor
+      </a>
+      <div class="report-actions">
+        <a href="/" class="btn btn-ghost-sm">New audit</a>
+      </div>
+    </div>
+  </header>
+
+  <!-- ===== Report root (filled by JS) ===== -->
+  <main class="container" id="report-root" style="padding-top:4rem;">
+    <div class="empty-state">
+      <div class="empty-icon">⬆</div>
+      <p class="muted">Decoding shared report…</p>
+    </div>
+  </main>
+
+  <!-- ===== Footer ===== -->
+  <footer class="site-footer">
+    <div class="container footer-inner">
+      <span class="footer-logo">
+        <span class="logo-mark">G</span> GEO Auditor
+      </span>
+      <span class="muted" style="font-size:0.82rem;">
+        Technical audits for AI search readiness.
+      </span>
+    </div>
+    <div class="footer-bottom">
+      <!-- <a href="https://buymeacoffee.com/mandarmawale" target="_blank" rel="noopener" class="support-link">Support this project ↗</a> -->
+    </div>
+  </footer>
+
+  <script src="/static/app.js?v=2"></script>
+</body>
+</html>

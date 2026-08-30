@@ -3,7 +3,7 @@ Central configuration for GEO Auditor.
 
 Holds environment-driven settings, HTTP client defaults, and the FROZEN
 100-point scoring model. The scoring weights below are the single source
-of truth — engines, scoring.py, and report templates all read from here
+of truth — engines, scoring.py, and the report renderer all read from here
 so the numbers can never drift out of sync.
 """
 from __future__ import annotations
@@ -47,8 +47,8 @@ if TOTAL_POSSIBLE_SCORE != 100:
         f"Scoring model must sum to exactly 100 points, got {TOTAL_POSSIBLE_SCORE}"
     )
 
-# Human-readable labels + which engine owns each category, for templates
-# and orchestration bookkeeping.
+# Human-readable labels + which engine owns each category, for report
+# rendering and orchestration bookkeeping.
 CATEGORY_META: dict[str, dict[str, str]] = {
     "ai_crawler_accessibility": {
         "label": "AI Crawler Accessibility",
@@ -135,6 +135,25 @@ SPA_MARKERS: tuple[str, ...] = (
 )
 
 
+# --------------------------------------------------------------------------
+# Scoring thresholds (centralized — engines must not hardcode these values)
+# --------------------------------------------------------------------------
+# Quote Readiness / Citation Snippet Quality
+CITATION_MIN_WORDS: int = 20
+CITATION_MAX_WORDS: int = 50
+
+# JS Rendering Risk
+SUFFICIENT_TEXT_WORDS: int = 150
+LIMITED_TEXT_WORDS: int = 50
+
+# Fact Density
+MIN_NUMERIC_DENSITY: int = 3  # numeric tokens per 500 words for full points
+
+# Media-to-Text Balance
+MEDIA_RATIO_HEALTHY: int = 50  # words per image — healthy
+MEDIA_RATIO_CRITICAL: int = 20  # words per image — critical threshold
+
+
 @dataclass(frozen=True)
 class Settings:
     """Runtime settings loaded from environment variables (.env supported)."""
@@ -177,3 +196,6 @@ DEFAULT_HEADERS: dict[str, str] = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     "Accept-Language": "en-US,en;q=0.5",
 }
+
+
+

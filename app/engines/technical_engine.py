@@ -3,11 +3,18 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from app.config import AI_CRAWLER_POINTS, CRAWLER_ALIASES, CATEGORY_META
+from app.config import (
+    AI_CRAWLER_POINTS,
+    CRAWLER_ALIASES,
+    CATEGORY_META,
+    LIMITED_TEXT_WORDS,
+    SUFFICIENT_TEXT_WORDS,
+)
 from app.models import AuditSection, EffortLevel, Finding, ImpactLevel, Severity
-from app.services.html_utils import ParsedPage, get_meta_content, has_spa_markers
+from app.services.html_utils import ParsedPage
 from app.services.robots import RobotsRules
 from app.services.sitemap import SitemapResult
+from app.utils import parse_iso_datetime
 
 
 def score_ai_crawler_accessibility(robots: RobotsRules) -> AuditSection:
@@ -25,6 +32,7 @@ def score_ai_crawler_accessibility(robots: RobotsRules) -> AuditSection:
         section.findings.append(
             Finding(
                 category="ai_crawler_accessibility",
+                dimension=None,
                 severity=Severity.INFO,
                 title="No robots.txt found — AI crawlers are unrestricted by default",
                 why_it_matters=(
@@ -64,6 +72,7 @@ def score_ai_crawler_accessibility(robots: RobotsRules) -> AuditSection:
             section.findings.append(
                 Finding(
                     category="ai_crawler_accessibility",
+                    dimension=None,
                     severity=Severity.CRITICAL,
                     title=f"{bot_name} is blocked in robots.txt",
                     why_it_matters=(
@@ -85,6 +94,7 @@ def score_ai_crawler_accessibility(robots: RobotsRules) -> AuditSection:
             section.findings.append(
                 Finding(
                     category="ai_crawler_accessibility",
+                    dimension=None,
                     severity=Severity.PASS,
                     title=f"{bot_name} is allowed to crawl",
                     why_it_matters=f"{bot_name} can access and index this site's content.",
@@ -114,14 +124,14 @@ def score_js_rendering_risk(parsed: ParsedPage) -> AuditSection:
     )
 
     word_count = parsed.word_count
-    spa_markers_present = has_spa_markers(parsed.raw_html)
+    spa_markers_present = parsed.spa_markers_present
 
-    if word_count >= 150:
+    if word_count >= SUFFICIENT_TEXT_WORDS:
         section.points_awarded = 5
         severity = Severity.PASS
         title = "Raw HTML contains sufficient text for AI crawlers"
         recommendation = "No action needed — content is server-rendered or static."
-    elif word_count >= 50:
+    elif word_count >= LIMITED_TEXT_WORDS:
         section.points_awarded = 2
         severity = Severity.WARNING
         title = "Raw HTML has limited text — partial rendering risk"
@@ -146,6 +156,7 @@ def score_js_rendering_risk(parsed: ParsedPage) -> AuditSection:
     section.findings.append(
         Finding(
             category="js_rendering_risk",
+            dimension=None,
             severity=severity,
             title=title,
             why_it_matters=(
@@ -160,7 +171,7 @@ def score_js_rendering_risk(parsed: ParsedPage) -> AuditSection:
             ),
             recommendation=recommendation,
             copy_paste_fix=None,
-            impact=ImpactLevel.HIGH if word_count < 50 else ImpactLevel.MEDIUM,
+            impact=ImpactLevel.HIGH if word_count < LIMITED_TEXT_WORDS else ImpactLevel.MEDIUM,
             effort=EffortLevel.HIGH,
             points_awarded=section.points_awarded,
             points_possible=5,
@@ -180,27 +191,22 @@ def score_freshness_signals(parsed: ParsedPage, sitemap: SitemapResult) -> Audit
 
     candidates: list[tuple[str, datetime]] = []
 
-    article_modified = get_meta_content(parsed.soup, "article:modified_time", attr="property")
+    # --- article:modified_time from meta contents ---
+    article_modified = parsed.meta_contents.get("article:modified_time")
     if article_modified:
-        try:
-            dt = datetime.fromisoformat(article_modified.replace("Z", "+00:00"))
-            if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=timezone.utc)
+        dt = parse_iso_datetime(article_modified)
+        if dt:
             candidates.append(("meta article:modified_time", dt))
-        except ValueError:
-            pass
 
+    # --- JSON-LD dateModified ---
     for block in parsed.json_ld_blocks:
         date_modified = block.get("dateModified")
         if isinstance(date_modified, str):
-            try:
-                dt = datetime.fromisoformat(date_modified.replace("Z", "+00:00"))
-                if dt.tzinfo is None:
-                    dt = dt.replace(tzinfo=timezone.utc)
+            dt = parse_iso_datetime(date_modified)
+            if dt:
                 candidates.append(("JSON-LD dateModified", dt))
-            except ValueError:
-                pass
 
+    # --- Sitemap lastmod ---
     if sitemap.most_recent_lastmod:
         candidates.append(("sitemap.xml <lastmod>", sitemap.most_recent_lastmod))
 
@@ -209,6 +215,7 @@ def score_freshness_signals(parsed: ParsedPage, sitemap: SitemapResult) -> Audit
         section.findings.append(
             Finding(
                 category="freshness_signals",
+                dimension=None,
                 severity=Severity.WARNING,
                 title="No freshness signal found",
                 why_it_matters=(
@@ -241,6 +248,7 @@ def score_freshness_signals(parsed: ParsedPage, sitemap: SitemapResult) -> Audit
     section.findings.append(
         Finding(
             category="freshness_signals",
+            dimension=None,
             severity=severity,
             title=f"Most recent freshness signal is {days_old} days old",
             why_it_matters="AI systems favor recently updated content as more trustworthy and current.",

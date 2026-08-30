@@ -35,18 +35,6 @@ Target users: **B2B SaaS startups and professional-service SMBs**.
   semantic categories (Query Coverage, Citation Snippet Quality), with
   heuristic fallbacks so the audit always completes.
 
-## Research Notes
-
-During development I reviewed how AI search systems such as ChatGPT Search, Google AI Overviews, Perplexity, and Claude retrieve and cite web content. While implementation details differ, common patterns emerged:
-
-- Crawlability remains a prerequisite — if AI bots can't fetch your page, it's invisible.
-- Structured entities (JSON-LD) improve source confidence and citation likelihood.
-- Direct-answer content (20–50 word lead paragraphs under H2/H3 headings) is easier to extract and cite.
-- Tables and factual language are frequently surfaced in generated answers.
-- Freshness signals (sitemap `lastmod`, recent content) influence citation selection.
-
-These observations informed the scoring framework used in GEO Auditor.
-
 ## 4. Architecture
 
 The system follows a five-stage pipeline: data acquisition → parsing & extraction → deterministic scoring → optional LLM semantic evaluation → report generation.
@@ -140,9 +128,9 @@ flowchart TB
 
 ### Why a Hybrid Architecture?
 
-The GEO Auditor uses deterministic Python rules for technical accessibility, schema validation, and structural extractability so scores remain fully reproducible. The LLM layer is used only for two constrained semantic categories (Query Coverage and Citation Snippet Quality), with `temperature=0` and strict JSON output. If the API key is unset, the LLM is unavailable, or an error occurs, heuristic fallbacks score the same categories so the audit always completes successfully.
+The GEO Auditor uses deterministic Python rules for technical accessibility, schema validation, and structural extractability so scores remain fully reproducible. The LLM layer is used only for two constrained semantic categories (Query Coverage and Citation Snippet Quality), with `temperature=0` and strict JSON output. If the API key is unset, the LLM is unavailable, or an error occurs, heuristic fallbacks score the same categories instead so the audit always completes successfully.
 
-Concretely: **8 of the 10 categories are 100% deterministic Python** (crawler accessibility, JS rendering risk, structured entity data, entity completeness, quote readiness, fact density, media-to-text balance, freshness). Only **Query Coverage** and **AI Citation Snippet Quality** touch the LLM layer — and even those have a full heuristic fallback path, so nothing in the product ever depends on the LLM provider being reachable.
+Concretely: **8 of the 10 categories are 100% deterministic Python** (crawler accessibility, JS risk, freshness, structured entity data, entity completeness, quote readiness, fact density, media-to-text balance). Only **Query Coverage** and **AI Citation Snippet Quality** touch the LLM layer — and even those have a full heuristic fallback path, so nothing in the product ever depends on the LLM provider being reachable.
 
 ## 5. Scoring Methodology
 
@@ -202,7 +190,7 @@ Open **http://127.0.0.1:8000**.
 ### Environment variables (all optional — `.env.example`)
 
 | Variable | Default | Purpose |
-|---|---|---|
+|----------|---------|---------|
 | `GROQ_API_KEY` | *(unset)* | Enables the LLM semantic layer. App works fully without it. |
 | `GROQ_MODEL` | `llama-3.1-8b-instant` | LLM model name |
 | `GROQ_BASE_URL` | `https://api.groq.com/openai/v1` | Rarely needs changing |
@@ -210,8 +198,76 @@ Open **http://127.0.0.1:8000**.
 | `LLM_TIMEOUT_SECONDS` | `6.0` | Timeout per LLM call |
 | `MAX_HTML_BYTES` | `3000000` | Safety cap on HTML processed per audit |
 | `APP_ENV` | `development` | Informational only |
+| `FRONTEND_BASE_URL` | `https://geoauditor.pages.dev` | Frontend origin for server redirects (`GET /`, `POST /audit`, `/report/share`, `/api/render-shared`) |
+| `CORS_ORIGINS` | *(empty)* | Comma-separated extra allowed origins (e.g. a custom domain) |
 
-## 7. Example Report
+## 7. Deployments
+
+### Local Development
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env
+uvicorn app.main:app --reload
+```
+
+Open **http://127.0.0.1:8000**.
+
+### Render (Production)
+
+1. Push your code to `main` branch.
+2. Create a new **Python** web service on [render.com](https://render.com).
+3. Connect your GitHub repo.
+4. Set these environment variables (or set them in Render dashboard):
+   - `GROQ_API_KEY` (secret)
+   - `GROQ_MODEL` (optional)
+   - `GROQ_BASE_URL` (optional)
+   - `REQUEST_TIMEOUT_SECONDS`
+   - `LLM_TIMEOUT_SECONDS`
+   - `MAX_HTML_BYTES`
+   - `APP_ENV=production`
+5. Deploy — the service will auto-deploy on every push to `main`.
+
+**Health check:** `https://your-app.onrender.com/health`
+
+**API base:** `https://your-app.onrender.com`
+
+### Cloudflare Pages (Static Frontend) — see `frontend/`
+
+The frontend in `frontend/` is a **static site** (no Python, no build step). It calls
+the Render API (`/api/audit`) over the network; reports are rendered client-side from
+the JSON response. This is why you get the free `*.pages.dev` domain **and** Cloudflare's
+CDN/caching, while the Python backend stays on Render.
+
+1. Create a new **Cloudflare Pages** project at [pages.cloudflare.com](https://pages.cloudflare.com).
+2. Connect your GitHub repo.
+3. Set **Build command** to: `echo "Static site — no build"`.
+4. Set **Output directory** to: `frontend`.
+5. **Name the project `geoauditor`** so it is served at `https://geoauditor.pages.dev` (no
+   hyphen). This matches the default `FRONTEND_BASE_URL` and `ALLOWED_ORIGINS` baked into the
+   backend — if you use a different name you must set `FRONTEND_BASE_URL` and `CORS_ORIGINS`
+   on Render accordingly.
+6. No environment variables are needed — the API base URL lives in the `api-base` meta tag
+   in each HTML file (`frontend/index.html`, `frontend/report.html`, …). Point it at your
+   Render URL, e.g. `https://geo-auditor-api.onrender.com`.
+7. Deploy — your site is served from `https://geoauditor.pages.dev`.
+
+**local preview:** `npx wrangler pages dev frontend`
+
+**CORS:** the Render backend already allows `https://geoauditor.pages.dev`
+(`ALLOWED_ORIGINS` in `app/main.py`). If your Pages domain differs, update that list
+and redeploy Render.
+
+**API base:** `https://your-app.onrender.com` (or your custom domain)
+
+**Cloudflare Web Analytics:** Replace `YOUR_CWA_TOKEN_HERE` in `frontend/index.html`
+and `frontend/report.html` with your token from the Cloudflare dashboard.
+
+**Note on samples:** the "Sample reports" cards open the server-rendered samples hosted on
+Render (`/report/sample/{id}`) in a new tab, since those are full HTML pages.
+
+## 8. Example Report
 
 From a real audit run against a live site during development (deterministic mode):
 
@@ -221,9 +277,9 @@ From a real audit run against a live site during development (deterministic mode
 > **Evidence:** `robots.txt` disallows `/` for user-agent matching `PerplexityBot`.
 > **Fix:** Remove the `Disallow: /` rule for PerplexityBot or scope it narrowly.
 
-Full sample reports are in [`sample_reports/`](sample_reports/) and served at `/report/sample/report_1`, `/report_2`, `/report_3`.
+Full sample reports are in [`sample_reports/`](sample_reports/) and served at `/report/sample/github`, `/report/sample/hubspot`, `/report/sample/harvey`.
 
-## 8. Scope Cuts
+## 9. Scope Cuts
 
 - **No database, no auth, no history.** Audits are stateless and ephemeral.
 - **No headless-browser rendering.** JS Rendering Risk is measured from raw HTML rather than spinning up Playwright/Puppeteer.
@@ -231,7 +287,7 @@ Full sample reports are in [`sample_reports/`](sample_reports/) and served at `/
 - **Single-page audits only.** The v1 focus is homepage + `robots.txt` + `sitemap.xml`.
 - **LLM layer is intentionally minimal (2 of 10 categories).** This was a deliberate product decision: the LLM sharpens two heuristic categories without making API reachability a hard dependency.
 
-## 9. Future Improvements
+## 10. Future Improvements
 
 - **Multi-page crawl** (homepage + top N pages by internal link count).
 - **Historical tracking** — store audits to show score trends after fixes are shipped.
@@ -266,19 +322,23 @@ geo-auditor/
 │   │   ├── sitemap.py                     # Sitemap discovery + lastmod extraction
 │   │   ├── html_utils.py                   # Shared BeautifulSoup helpers
 │   │   ├── llm_service.py                   # LLM client w/ cache + fallback
-│   │   └── pdf_service.py                   # ReportLab text-first PDF generator
-│   ├── templates/
-│   │   ├── index.html                        # Landing page
-│   │   └── report.html                       # Full audit report
+│   │   ├── pdf_service.py                   # ReportLab text-first PDF generator
+│   │   └── html_export.py                   # Standalone, self-contained HTML report (for /audit/html)
+├── frontend/                              # Static Cloudflare Pages frontend (no build step)
+│   ├── index.html                          # Landing page (static)
+│   ├── report.html                         # Report shell — JS renders the audit from JSON
+│   ├── 404.html / 429.html / 500.html     # Static error pages
+│   ├── _headers                           # Cloudflare Pages security + cache headers
 │   └── static/
-│       ├── style.css                        # CSS design system
-│       └── app.js                           # Copy buttons, form loading state
-├── sample_reports/                              # 3 pre-generated sample reports
+│       ├── app.js                         # API calls + client-side report rendering
+│       └── style.css / favicon / robots.txt / sitemap.xml
+├── sample_reports/                              # 3 pre-generated sample reports (served at /report/sample/{id})
 ├── requirements.txt
 ├── README.md
 ├── Technical_Design_Document.md  # Deep-dive on architecture, design decisions, scoring rationale
 ├── .env.example
-└── .gitignore
+├── .gitignore
+├── render.yaml                    # Render.com deployment config
 ```
 
 ## How to Evaluate This Submission
@@ -293,3 +353,9 @@ uvicorn app.main:app --reload
 
 App available at: **http://127.0.0.1:8000**
 Health check: **http://127.0.0.1:8000/health**
+
+**Public Deployments:**
+https://geoauditor.pages.dev
+
+
+

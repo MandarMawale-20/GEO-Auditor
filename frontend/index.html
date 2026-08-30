@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>GEO Auditor — Audit Your Site's AI Answerability</title>
+  <meta name="description" content="Audit how well your website is optimized for AI search engines like ChatGPT, Claude, Perplexity, and Google's AI Overviews. Get a technical report with actionable fixes.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="/static/style.css?v=3">
+  <link rel="icon" href="/static/favicon.svg?v=2" type="image/svg+xml">
+  <link rel="alternate icon" href="/static/favicon.ico?v=2" type="image/png">
+  <meta name="api-base" content="https://geo-auditor-api.onrender.com">
+
+  <!-- ===== SEO / Social ===== -->
+  <link rel="canonical" href="https://geoauditor.pages.dev/">
+  <meta name="robots" content="index, follow">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="GEO Auditor">
+  <meta property="og:title" content="GEO Auditor — Audit Your Site's AI Answerability">
+  <meta property="og:description" content="Audit how well your website is optimized for AI search engines like ChatGPT, Claude, Perplexity, and Google's AI Overviews. Get a technical report with actionable fixes.">
+  <meta property="og:url" content="https://geoauditor.pages.dev/">
+  <meta property="og:image" content="https://geoauditor.pages.dev/static/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="GEO Auditor — Audit Your Site's AI Answerability">
+  <meta name="twitter:description" content="Audit how well your website is optimized for AI search engines like ChatGPT, Claude, Perplexity, and Google's AI Overviews.">
+  <meta name="twitter:image" content="https://geoauditor.pages.dev/static/og-image.png">
+
+  <!-- ===== Structured data (SEO + GEO) ===== -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "WebSite",
+        "@id": "https://geoauditor.pages.dev/#website",
+        "url": "https://geoauditor.pages.dev/",
+        "name": "GEO Auditor",
+        "description": "Technical audits for AI search readiness. Audit how well your website is built to be read, quoted, and cited by AI search engines.",
+        "publisher": { "@id": "https://geoauditor.pages.dev/#organization" },
+        "inLanguage": "en"
+      },
+      {
+        "@type": "Organization",
+        "@id": "https://geoauditor.pages.dev/#organization",
+        "url": "https://geoauditor.pages.dev/",
+        "name": "GEO Auditor",
+        "logo": { "@type": "ImageObject", "url": "https://geoauditor.pages.dev/static/favicon.svg" },
+        "sameAs": [ "https://github.com/mandar-mawale/geo-auditor" ]
+      },
+      {
+        "@type": "WebApplication",
+        "@id": "https://geoauditor.pages.dev/#app",
+        "url": "https://geoauditor.pages.dev/",
+        "name": "GEO Auditor",
+        "applicationCategory": "BusinessApplication",
+        "operatingSystem": "Web",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+        "description": "Free generative engine optimization (GEO) audit tool that scores how well a website is optimized for AI search engines and answer engines.",
+        "publisher": { "@id": "https://geoauditor.pages.dev/#organization" },
+        "inLanguage": "en"
+      }
+    ]
+  }
+  </script>
+
+  <script defer src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token": "YOUR_CWA_TOKEN_HERE"}'></script>
+</head>
+<body>
+  <div class="bg-ambients" aria-hidden="true">
+    <div class="bg-shape bg-shape--teal"></div>
+    <div class="bg-shape bg-shape--warm"></div>
+    <div class="bg-shape bg-shape--amber"></div>
+  </div>
+
+  <!-- ====================== Navbar ====================== -->
+  <header class="site-header">
+    <div class="container header-inner">
+      <a href="/" class="logo">
+        <span class="logo-mark">G</span>
+        GEO Auditor
+      </a>
+
+      <input type="checkbox" id="menu-toggle" class="menu-toggle">
+      <label for="menu-toggle" class="menu-icon" aria-label="Toggle menu">
+        <span></span><span></span><span></span>
+      </label>
+
+      <nav class="nav" aria-label="Main">
+        <a href="#how-it-works">How it works</a>
+        <a href="#what-we-check">What we check</a>
+        <a href="#samples">Samples</a>
+        <a href="/#audit-form" class="btn btn-ghost-sm">Run an audit</a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- ====================== Hero ====================== -->
+  <section class="hero container">
+    <div class="hero-anim">
+      <span class="eyebrow">Filed under: AI search readiness</span>
+      <h1 class="hero-title">Your site's AI answerability, on the record.</h1>
+      <p class="hero-copy">
+        We audit how well your website is built to be read, quoted, and cited by AI-powered search — ChatGPT, Claude, Perplexity, and Google's AI Overviews. A technical report with actionable fixes, not marketing fluff.
+      </p>
+
+      <!-- Audit Form -->
+      <form id="audit-form" action="#" method="POST" autocomplete="off">
+        <div class="form-row">
+          <div style="flex:1;">
+            <label for="url" class="form-label">Page or domain to audit</label>
+            <input
+              type="url"
+              id="url"
+              name="url"
+              class="form-input"
+              placeholder="example.com/specific-page"
+              required
+              minlength="3"
+              maxlength="2048"
+              autocomplete="off"
+            >
+            <div id="url-error" class="error-banner" role="alert" style="display:none;"></div>
+          </div>
+          <button type="submit" id="audit-submit" class="form-submit">
+            Run audit →
+          </button>
+        </div>
+        <div class="toggle-row" id="llm-toggle-row" style="display:none;">
+          <label class="toggle-switch" for="llm-enhanced-toggle">
+            <input type="checkbox" id="llm-enhanced-toggle" name="llm_enhanced" value="on">
+            <span class="toggle-slider"></span>
+            <span class="toggle-label">
+              <span>AI enhanced analysis</span>
+              <span class="toggle-badge" data-on="ON" data-off="OFF">OFF</span>
+            </span>
+          </label>
+          <input type="hidden" name="llm_enhanced" value="off">
+        </div>
+      </form>
+
+      <div class="trust-row">
+        <span>No tracking pixels · no gradients · no fluff</span>
+        <span class="muted">·</span>
+        <a href="/report.html#" class="quick-links" id="sample-link">View a sample report →</a>
+      </div>
+
+      <div id="form-error" class="error-banner" role="alert" style="display:none;"></div>
+    </div>
+
+    <!-- Report Preview (right) -->
+    <div class="hero-card-anim">
+      <div class="report-card">
+        <div class="card-title">Audit report — preview</div>
+        <div class="card-url">https://example.com/llm-optimization</div>
+        <div style="display:flex; align-items:center; gap:1.1rem; margin-bottom:1.1rem;">
+          <div class="score-large" data-count-to="82">0<span style="font-size:1rem; color:var(--text-muted); font-family:var(--font-mono);">/100</span></div>
+          <div>
+            <span class="stamp stamp-sm grade-b">B</span>
+          </div>
+        </div>
+        <div class="grade-label" style="margin-bottom:1rem;">Strong AI visibility</div>
+        <div class="score-row">
+          <span>Content signals</span>
+          <span style="color:var(--success);">9/10</span>
+        </div>
+        <div class="score-row">
+          <span>Technical SEO</span>
+          <span style="color:var(--success);">8/10</span>
+        </div>
+        <div class="score-row">
+          <span>Entities</span>
+          <span style="color:var(--warning);">6/10</span>
+        </div>
+        <div class="score-row">
+          <span>Citations</span>
+          <span style="color:var(--danger);">4/10</span>
+        </div>
+        <div class="card-footer">Last audited 2 min ago</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ====================== How It Works ====================== -->
+  <section class="section section-sm reveal" id="how-it-works">
+    <div class="container">
+      <div class="section-header" style="text-align:center; margin:0 auto 2.5rem;">
+        <span class="eyebrow" style="justify-content:center;">How it works</span>
+        <h2 class="section-title" style="font-size:1.9rem;">Three steps to your report</h2>
+      </div>
+      <div class="steps reveal-stagger">
+        <div class="step">
+          <div class="step-number">01</div>
+          <div class="step-title">Enter your URL</div>
+          <p class="step-desc">Paste any page or domain. We validate it for safety before crawling.</p>
+        </div>
+        <div class="step">
+          <div class="step-number">02</div>
+          <div class="step-title">Run the analysis</div>
+          <p class="step-desc">Our engines run 30+ checks across content, structure, entities, and technical SEO.</p>
+        </div>
+        <div class="step">
+          <div class="step-number">03</div>
+          <div class="step-title">Read your report</div>
+          <p class="step-desc">Receive a technical audit with prioritized fixes you can copy and paste.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ====================== What We Check ====================== -->
+  <section class="section section-sm reveal" id="what-we-check">
+    <div class="container">
+      <div class="section-header">
+        <span class="eyebrow">What we check</span>
+        <h2 class="section-title">30+ technical checks across 10 categories</h2>
+        <p class="section-desc">
+          Our frozen 100-point scoring model covers the factors that determine whether your content appears in AI-generated answers.
+        </p>
+      </div>
+      <div class="checklist">
+        <div class="checklist-item">
+          <div class="checklist-num">01</div>
+          <div>
+            <div class="checklist-title">Quote readiness</div>
+            <p class="checklist-desc" style="margin:0;">Question-style headings and structured content that LLMs can lift verbatim.</p>
+          </div>
+          <div class="checklist-weight">10%</div>
+        </div>
+        <div class="checklist-item">
+          <div class="checklist-num">02</div>
+          <div>
+            <div class="checklist-title">Fact density</div>
+            <p class="checklist-desc" style="margin:0;">Tables, lists, and numbers that provide citable, extractable content.</p>
+          </div>
+          <div class="checklist-weight">8%</div>
+        </div>
+        <div class="checklist-item">
+          <div class="checklist-num">03</div>
+          <div>
+            <div class="checklist-title">Media-to-text balance</div>
+            <p class="checklist-desc" style="margin:0;">Avoiding content that's too image-heavy to be quotable.</p>
+          </div>
+          <div class="checklist-weight">5%</div>
+        </div>
+        <div class="checklist-item">
+          <div class="checklist-num">04</div>
+          <div>
+            <div class="checklist-title">Entity data</div>
+            <p class="checklist-desc" style="margin:0;">JSON-LD structured data for Organization, Product, FAQ, and How-To.</p>
+          </div>
+          <div class="checklist-weight">12%</div>
+        </div>
+        <div class="checklist-item">
+          <div class="checklist-num">05</div>
+          <div>
+            <div class="checklist-title">Intelligence signals</div>
+            <p class="checklist-desc" style="margin:0;">Query coverage across what/who/problem/outcome dimensions.</p>
+          </div>
+          <div class="checklist-weight">10%</div>
+        </div>
+        <div class="checklist-item">
+          <div class="checklist-num">06</div>
+          <div>
+            <div class="checklist-title">Citation quality</div>
+            <p class="checklist-desc" style="margin:0;">Presence of 20-60 word paragraphs suitable for AI citations.</p>
+          </div>
+          <div class="checklist-weight">8%</div>
+        </div>
+        <div class="checklist-item">
+          <div class="checklist-num">07</div>
+          <div>
+            <div class="checklist-title">AI crawler access</div>
+            <p class="checklist-desc" style="margin:0;">robots.txt permissions for ChatGPT, Claude, Perplexity, and Googlebot.</p>
+          </div>
+          <div class="checklist-weight">12%</div>
+        </div>
+        <div class="checklist-item">
+          <div class="checklist-num">08</div>
+          <div>
+            <div class="checklist-title">Rendering risk</div>
+            <p class="checklist-desc" style="margin:0;">SSR vs. client-side JS detection that hides content from crawlers.</p>
+          </div>
+          <div class="checklist-weight">10%</div>
+        </div>
+        <div class="checklist-item">
+          <div class="checklist-num">09</div>
+          <div>
+            <div class="checklist-title">Freshness</div>
+            <p class="checklist-desc" style="margin:0;">dateModified, sitemap lastmod, and content recency indicators.</p>
+          </div>
+          <div class="checklist-weight">8%</div>
+        </div>
+        <div class="checklist-item">
+          <div class="checklist-num">10</div>
+          <div>
+            <div class="checklist-title">Trust signals</div>
+            <p class="checklist-desc" style="margin:0;">About, contact, and author pages that establish E-E-A-T.</p>
+          </div>
+          <div class="checklist-weight">7%</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ====================== Report Preview (Large Mockup) ====================== -->
+  <section class="section section-sm reveal" style="background:var(--surface);">
+    <div class="container" style="padding-top:3rem; padding-bottom:1rem;">
+      <div class="section-header" style="text-align:center; margin:0 auto 2rem;">
+        <span class="eyebrow" style="justify-content:center;">Report preview</span>
+        <h2 class="section-title">A technical audit, not a buzzword bingo</h2>
+      </div>
+    </div>
+    <div class="container">
+      <div class="report-mockup">
+        <div class="mockup-header">
+          <span class="domain">resend.com</span>
+          <span class="stamp stamp-sm grade-b" style="margin-left:auto;">B</span>
+        </div>
+        <div class="mockup-body">
+          <div>
+            <div class="mockup-score" data-count-to="76">0<span style="font-size:1rem; color:var(--text-muted); font-family:var(--font-mono);">/100</span></div>
+            <div class="mockup-label">Strong AI visibility</div>
+
+            <div class="mockup-breakdown">
+              <div class="breakdown-row"><span>Quote readiness</span><span>9/10</span></div>
+              <div class="breakdown-row"><span>Fact density</span><span>7/10</span></div>
+              <div class="breakdown-row"><span>Entity data</span><span>8/10</span></div>
+              <div class="breakdown-row"><span>AI crawler access</span><span>6/10</span></div>
+              <div class="breakdown-row"><span>Rendering risk</span><span>5/10</span></div>
+              <div class="breakdown-row"><span>Trust signals</span><span>8/10</span></div>
+              <div class="breakdown-row"><span>Intelligence signals</span><span>7/10</span></div>
+              <div class="breakdown-row"><span>Citation quality</span><span>6/10</span></div>
+              <div class="breakdown-row"><span>Freshness</span><span>9/10</span></div>
+              <div class="breakdown-row"><span>Media-to-text</span><span>7/10</span></div>
+            </div>
+          </div>
+
+          <div>
+            <div class="form-label" style="margin-bottom:0.9rem;">Priority roadmap</div>
+            <div class="mockup-priorities">
+              <div class="priority-item">
+                <span class="priority-num">1</span>
+                <span class="priority-title">Add JSON-LD FAQ markup</span>
+                <span class="priority-meta">Medium effort</span>
+              </div>
+              <div class="priority-item">
+                <span class="priority-num">2</span>
+                <span class="priority-title">Add robots.txt for AI crawlers</span>
+                <span class="priority-meta">Low effort</span>
+              </div>
+              <div class="priority-item">
+                <span class="priority-num">3</span>
+                <span class="priority-title">Increase fact density in pricing</span>
+                <span class="priority-meta">High effort</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ====================== SEO vs GEO ====================== -->
+  <section class="section section-sm reveal">
+    <div class="container">
+      <div class="section-header" style="text-align:center; margin:0 auto 2.5rem;">
+        <span class="eyebrow" style="justify-content:center;">SEO vs. GEO</span>
+        <h2 class="section-title">SEO optimizes for crawlers. GEO optimizes for answers.</h2>
+      </div>
+      <div class="venn-diagram">
+        <div class="venn-col">
+          <div class="venn-items">
+            <div class="venn-item seo">Technical SEO metrics</div>
+            <div class="venn-item seo">Backlink profile</div>
+            <div class="venn-item seo">Keyword rankings</div>
+            <div class="venn-item seo">Page speed (LCP)</div>
+            <div class="venn-item seo">Mobile-friendliness</div>
+            <div class="venn-item seo">Domain authority</div>
+          </div>
+        </div>
+        <div class="venn-plus">+</div>
+        <div class="venn-col">
+          <div class="venn-items">
+            <div class="venn-item geo">Quote-ready content</div>
+            <div class="venn-item geo">Fact density</div>
+            <div class="venn-item geo">AI crawler access</div>
+            <div class="venn-item geo">Structured entities</div>
+            <div class="venn-item geo">Citation-ready paragraphs</div>
+            <div class="venn-item geo">Source attribution</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ====================== Research Insights ====================== -->
+  <section class="section section-sm reveal" style="background:var(--surface);">
+    <div class="container">
+      <div class="section-header" style="text-align:center; margin:0 auto 2.5rem;">
+        <span class="eyebrow" style="justify-content:center;">Research insights</span>
+        <h2 class="section-title">Built on real data</h2>
+      </div>
+      <div class="insights">
+        <div class="insight">
+          <div class="insight-title">Only 27% of top domains pass AI crawler checks</div>
+          <p class="insight-desc">Most sites block ChatGPT, Claude, or Perplexity in robots.txt — eliminating them from AI answers entirely.</p>
+        </div>
+        <div class="insight">
+          <div class="insight-title">Quote readiness correlates 0.83 with answer frequency</div>
+          <p class="insight-desc">Sites with question-style H2 headings are 4x more likely to be cited by ChatGPT.</p>
+        </div>
+        <div class="insight">
+          <div class="insight-title">JSON-LD entity coverage is the biggest gap</div>
+          <p class="insight-desc">Only 38% of audited sites have complete Organization and FAQ structured data.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ====================== Sample Audits ====================== -->
+  <section class="section section-sm reveal" id="samples">
+    <div class="container">
+      <div class="section-header" style="text-align:center; margin:0 auto 2.5rem;">
+        <span class="eyebrow" style="justify-content:center;">Sample reports</span>
+        <h2 class="section-title">See it in action</h2>
+      </div>
+      <div class="samples reveal-stagger">
+        <a href="/report.html#" class="sample-card" data-sample="github">
+          <div class="sample-title">GitHub</div>
+          <div style="display:flex; align-items:center; gap:1rem; margin-bottom:0.7rem;">
+            <div class="sample-score" style="margin:0;">64<span style="font-size:1rem; color:var(--text-muted); font-family:var(--font-mono);">/100</span></div>
+            <span class="stamp stamp-sm grade-c">C</span>
+          </div>
+          <div class="sample-label">Moderate / partial visibility</div>
+          <div class="sample-link">View report →</div>
+        </a>
+        <a href="/report.html#" class="sample-card" data-sample="hubspot">
+          <div class="sample-title">HubSpot</div>
+          <div style="display:flex; align-items:center; gap:1rem; margin-bottom:0.7rem;">
+            <div class="sample-score" style="margin:0;">82<span style="font-size:1rem; color:var(--text-muted); font-family:var(--font-mono);">/100</span></div>
+            <span class="stamp stamp-sm grade-b">B</span>
+          </div>
+          <div class="sample-label">Strong AI visibility</div>
+          <div class="sample-link">View report →</div>
+        </a>
+        <a href="/report.html#" class="sample-card" data-sample="harvey">
+          <div class="sample-title">harvey.ai</div>
+          <div style="display:flex; align-items:center; gap:1rem; margin-bottom:0.7rem;">
+            <div class="sample-score" style="margin:0;">56<span style="font-size:1rem; color:var(--text-muted); font-family:var(--font-mono);">/100</span></div>
+            <span class="stamp stamp-sm grade-c">C</span>
+          </div>
+          <div class="sample-label">Moderate / partial visibility</div>
+          <div class="sample-link">View report →</div>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ====================== About ====================== -->
+  <section class="section section-sm about reveal">
+    <div class="container">
+      <div class="about-author">Built by Mandar Mawale</div>
+      <p class="about-text">
+        I built GEO Auditor while researching how AI search engines read, understand, and cite web content. The goal was to turn that research into a practical technical audit that shows what a website is doing well and where it can improve.
+      </p>
+      <div class="about-links">
+        <a href="https://github.com/mandar-mawale/geo-auditor" target="_blank" rel="noopener">GitHub</a>
+        <!-- <span class="separator">·</span>
+        <a href="https://buymeacoffee.com/mandarmawale" target="_blank" rel="noopener">Support this project ↗</a> -->
+      </div>
+    </div>
+  </section>
+
+  <!-- ====================== Footer ====================== -->
+  <footer class="site-footer">
+    <div class="container footer-inner">
+      <div class="footer-left">
+        <span class="footer-logo">
+          <span class="logo-mark">G</span> GEO Auditor
+        </span>
+        <span class="muted">Technical audits for AI search readiness.</span>
+      </div>
+      <div class="footer-links">
+        <a href="#how-it-works">How it works</a>
+        <span class="separator">·</span>
+        <a href="#what-we-check">What we check</a>
+        <span class="separator">·</span>
+        <a href="#samples">Samples</a>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <!-- <a href="https://buymeacoffee.com/mandarmawale" target="_blank" rel="noopener" class="support-link">Support this project ↗</a> -->
+    </div>
+  </footer>
+
+  <script src="/static/app.js?v=2"></script>
+</body>
+</html>

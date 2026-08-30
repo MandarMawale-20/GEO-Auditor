@@ -5,13 +5,15 @@ Deliberately avoids urllib.robotparser: we need per-AI-crawler visibility
 (OAI-SearchBot, PerplexityBot, ClaudeBot/Claude-Web, Googlebot) rather than
 a single allow/deny verdict, and we need it to work on partially malformed
 robots.txt files without raising.
+
+fetches robots.txt through the centralized SSRF-safe HTTP client.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from urllib.parse import urljoin, urlparse
 
-from app.services.fetcher import fetch_text_resource
+from app.services.http_client import safe_get_text
 
 
 @dataclass
@@ -41,8 +43,12 @@ class RobotsRules:
         return user_agent.lower() in self.disallow_by_agent
 
 
-def _parse_robots_txt(raw_text: str) -> tuple[dict[str, list[str]], list[str]]:
-    """Parse robots.txt content into {user-agent: [disallow paths]} + sitemap URLs."""
+def _parse_robots_txt(raw_text: str, base_url: str) -> tuple[dict[str, list[str]], list[str]]:
+    """Parse robots.txt content into {user-agent: [disallow paths]} + sitemap URLs.
+
+    ``base_url`` is the fully-qualified robots.txt URL, used to resolve
+    relative sitemap paths per RFC 9309.
+    """
     disallow_by_agent: dict[str, list[str]] = {}
     sitemaps: list[str] = []
 
@@ -74,26 +80,30 @@ def _parse_robots_txt(raw_text: str) -> tuple[dict[str, list[str]], list[str]]:
                 else:
                     disallow_by_agent.setdefault(agent_name, [])
         elif field_name == "sitemap":
-            full_sitemap_url = urljoin(robots_url, value)
+            full_sitemap_url = urljoin(base_url, value)
             sitemaps.append(full_sitemap_url)
 
     return disallow_by_agent, sitemaps
 
 
 async def get_robots_rules(page_url: str) -> RobotsRules:
-    """Fetch and parse robots.txt for the domain hosting page_url."""
+    """Fetch and parse robots.txt for the domain hosting page_url.
+
+    The robots.txt URL is constructed from the validated ``page_url`` and
+    fetched through the centralized SSRF-safe HTTP client.
+    """
     parsed = urlparse(page_url)
     if not parsed.scheme or not parsed.netloc:
         return RobotsRules(exists=False, fetch_error="Invalid base URL for robots.txt lookup.")
 
     robots_url = urljoin(f"{parsed.scheme}://{parsed.netloc}", "/robots.txt")
-    result = await fetch_text_resource(robots_url)
+    result = await safe_get_text(robots_url, allow_redirects=True, max_redirects=5)
 
     if not result.ok or not result.text:
         # Missing robots.txt is treated as "allowed / no restrictions" per spec.
         return RobotsRules(exists=False, fetch_error=result.error)
 
-    disallow_by_agent, sitemaps = _parse_robots_txt(result.text)
+    disallow_by_agent, sitemaps = _parse_robots_txt(result.text, robots_url)
     return RobotsRules(
         exists=True,
         raw_text=result.text,

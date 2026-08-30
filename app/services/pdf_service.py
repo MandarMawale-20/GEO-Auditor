@@ -29,7 +29,6 @@ from reportlab.platypus import (
 
 from app.models import AuditReport
 import logging
-import traceback
 from xml.sax.saxutils import escape as xml_escape
 
 logger = logging.getLogger("geo_auditor.pdf")

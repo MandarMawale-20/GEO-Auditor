@@ -2,13 +2,22 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 import uuid
 from datetime import datetime, timezone
 
 from app.config import CATEGORY_META, SCORE_WEIGHTS, TOTAL_POSSIBLE_SCORE
 from app.engines import content_engine, entity_engine, intelligence_engine, technical_engine
-from app.models import AuditReport, AuditSection, EffortLevel, FetchHealth, Finding, ImpactLevel, Severity
+from app.models import (
+    AuditReport,
+    AuditSection,
+    EffortLevel,
+    FetchHealth,
+    Finding,
+    ImpactLevel,
+    Severity,
+)
 from app.scoring import (
     build_answerability_matrix,
     build_priority_roadmap,
@@ -17,11 +26,14 @@ from app.scoring import (
     compute_total_score,
     select_top_priorities,
 )
-from app.services.fetcher import fetch_html, normalize_url
+from app.services.fetcher import fetch_html
 from app.services.html_utils import parse_html
 from app.services import llm_service
 from app.services.robots import get_robots_rules
 from app.services.sitemap import get_sitemap_info
+from app.services.url_validator import normalize_url
+
+logger = logging.getLogger("geo_auditor.orchestrator")
 
 
 def _unreachable_report(raw_url: str, url: str, error_message: str, start: float) -> AuditReport:
@@ -35,6 +47,7 @@ def _unreachable_report(raw_url: str, url: str, error_message: str, start: float
         section.findings.append(
             Finding(
                 category=key,
+                dimension=None,
                 severity=Severity.CRITICAL,
                 title="Could not be evaluated — site unreachable",
                 why_it_matters="No score can be computed because the page could not be fetched.",
@@ -73,13 +86,86 @@ def _unreachable_report(raw_url: str, url: str, error_message: str, start: float
         answerability_matrix=[],
         top_priorities=findings[:1],
         all_findings=findings,
+        priority_roadmap=build_priority_roadmap(findings),
         llm_enhanced=False,
         llm_error=None,
         audit_duration_ms=round(duration_ms, 1),
     )
 
 
-async def run_audit(raw_url: str) -> AuditReport:
+async def _run_engine_safely(coro, section_key: str, fallback_label: str) -> AuditSection:
+    """Run an engine coroutine with error isolation.
+
+    If the engine raises, log the error server-side and return a
+    ``AuditSection`` with a CRITICAL finding — never propagate the
+    exception to the caller.
+    """
+    meta = CATEGORY_META[section_key]
+    points_possible = SCORE_WEIGHTS.get(section_key, 0)
+    section = AuditSection(
+        key=section_key,
+        label=meta["label"],
+        group=meta["group"],
+        points_possible=points_possible,
+    )
+    try:
+        result = await coro
+        if result is None:
+            section.findings.append(
+                Finding(
+                    category=section_key,
+                    dimension=None,
+                    severity=Severity.CRITICAL,
+                    title=f"{fallback_label}: engine returned no result",
+                    why_it_matters="The audit could not be completed for this category.",
+                    evidence="Engine invocation returned None.",
+                    recommendation="Re-run the audit. If the problem persists, report this as a bug.",
+                    impact=ImpactLevel.HIGH,
+                    effort=EffortLevel.LOW,
+                    points_awarded=0,
+                    points_possible=points_possible,
+                )
+            )
+            section.points_awarded = 0
+            return section
+        return result
+    except Exception as exc:  # noqa: BLE001 — intentional broad catch for isolation
+        logger.error(
+            "Engine failure in %s: %s", section_key, exc, exc_info=True
+        )
+        section.points_awarded = 0
+        section.findings.append(
+            Finding(
+                category=section_key,
+                dimension=None,
+                severity=Severity.CRITICAL,
+                title=f"{fallback_label}: engine failed",
+                why_it_matters=(
+                    "This category could not be scored because an internal error occurred. "
+                    "The issue has been logged server-side."
+                ),
+                evidence=f"Engine raised: {type(exc).__name__}: {exc}",
+                recommendation="Re-run the audit. If the problem persists, report this as a bug.",
+                impact=ImpactLevel.HIGH,
+                effort=EffortLevel.LOW,
+                points_awarded=0,
+                points_possible=points_possible,
+            )
+        )
+        return section
+
+
+async def run_audit(raw_url: str, llm_enabled: bool = False) -> AuditReport:
+    """Run a full GEO audit.
+
+    When ``llm_enabled`` is ``False`` (the default), the LLM semantic layer is
+    bypassed entirely — Query Coverage and Citation Snippet Quality fall back
+    to deterministic heuristics and no Groq API calls are made. This keeps
+    the product free-to-run when no API key is configured.
+
+    Each engine runs in an isolated wrapper so that a failure in one
+    category does not prevent the remaining categories from being scored.
+    """
     start = time.monotonic()
     url = normalize_url(raw_url)
 
@@ -102,7 +188,50 @@ async def run_audit(raw_url: str) -> AuditReport:
     # Parse once and reuse the result across all engines.
     parsed_document = parse_html(html_result.text)
 
-    # Score every engine concurrently.
+    # Score every engine concurrently, with error isolation per engine.
+    results = await asyncio.gather(
+        _run_engine_safely(
+            asyncio.to_thread(technical_engine.score_ai_crawler_accessibility, robots_rules),
+            "ai_crawler_accessibility", "AI Crawler Accessibility",
+        ),
+        _run_engine_safely(
+            asyncio.to_thread(technical_engine.score_js_rendering_risk, parsed_document),
+            "js_rendering_risk", "JS Rendering Risk",
+        ),
+        _run_engine_safely(
+            asyncio.to_thread(technical_engine.score_freshness_signals, parsed_document, sitemap_info),
+            "freshness_signals", "Freshness Signals",
+        ),
+        _run_engine_safely(
+            asyncio.to_thread(entity_engine.score_structured_entity_data, parsed_document),
+            "structured_entity_data", "Structured Entity Data",
+        ),
+        _run_engine_safely(
+            entity_engine.score_entity_completeness_trust(parsed_document, final_url),
+            "entity_completeness_trust", "Entity Completeness and Trust",
+        ),
+        _run_engine_safely(
+            asyncio.to_thread(content_engine.score_quote_readiness, parsed_document),
+            "quote_readiness", "Quote Readiness",
+        ),
+        _run_engine_safely(
+            asyncio.to_thread(content_engine.score_fact_density, parsed_document),
+            "fact_density", "Fact Density",
+        ),
+        _run_engine_safely(
+            asyncio.to_thread(content_engine.score_media_to_text_balance, parsed_document),
+            "media_to_text_balance", "Media-to-Text Balance",
+        ),
+        _run_engine_safely(
+            intelligence_engine.score_query_coverage(parsed_document, final_url, llm_enabled=llm_enabled),
+            "query_coverage", "Query Coverage",
+        ),
+        _run_engine_safely(
+            intelligence_engine.score_citation_snippet_quality(parsed_document, final_url, llm_enabled=llm_enabled),
+            "ai_citation_snippet_quality", "AI Citation Snippet Quality",
+        ),
+    )
+
     (
         crawler_section,
         js_section,
@@ -114,18 +243,7 @@ async def run_audit(raw_url: str) -> AuditReport:
         media_section,
         query_coverage_section,
         citation_section,
-    ) = await asyncio.gather(
-        asyncio.to_thread(technical_engine.score_ai_crawler_accessibility, robots_rules),
-        asyncio.to_thread(technical_engine.score_js_rendering_risk, parsed_document),
-        asyncio.to_thread(technical_engine.score_freshness_signals, parsed_document, sitemap_info),
-        asyncio.to_thread(entity_engine.score_structured_entity_data, parsed_document),
-        entity_engine.score_entity_completeness_trust(parsed_document, final_url),
-        asyncio.to_thread(content_engine.score_quote_readiness, parsed_document),
-        asyncio.to_thread(content_engine.score_fact_density, parsed_document),
-        asyncio.to_thread(content_engine.score_media_to_text_balance, parsed_document),
-        intelligence_engine.score_query_coverage(parsed_document, final_url),
-        intelligence_engine.score_citation_snippet_quality(parsed_document, final_url),
-    )
+    ) = results
 
     sections = [
         crawler_section,
@@ -144,7 +262,7 @@ async def run_audit(raw_url: str) -> AuditReport:
     grade, grade_label = compute_grade(total_score)
     all_findings = collect_findings(sections)
     top_priorities = select_top_priorities(all_findings, limit=3)
-    _ = build_priority_roadmap(all_findings)  # available for template use via all_findings sort if needed
+    priority_roadmap = build_priority_roadmap(all_findings)
     answerability_matrix = build_answerability_matrix(sections, parsed_document.visible_text)
 
     llm_enhanced = any(s.llm_enhanced for s in sections)
@@ -159,9 +277,11 @@ async def run_audit(raw_url: str) -> AuditReport:
         fetch_time_ms=html_result.elapsed_ms,
         ttfb_ms=html_result.elapsed_ms,  # httpx does not expose TTFB separately from total time
         redirect_count=html_result.redirect_count,
-        html_size_bytes=html_result.content_length,
+        html_size_bytes=html_result.bytes_observed or html_result.content_length,
         reachable=True,
         error_message=None,
+        bytes_observed=html_result.bytes_observed,
+        truncated=html_result.truncated,
     )
 
     report_id = uuid.uuid4().hex
@@ -179,6 +299,7 @@ async def run_audit(raw_url: str) -> AuditReport:
         answerability_matrix=answerability_matrix,
         top_priorities=top_priorities,
         all_findings=sorted(all_findings, key=lambda f: f.priority_score, reverse=True),
+        priority_roadmap=priority_roadmap,
         llm_enhanced=llm_enhanced,
         llm_error=llm_error,
         audit_duration_ms=round(duration_ms, 1),

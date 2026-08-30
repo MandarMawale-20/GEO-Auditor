@@ -1,10 +1,17 @@
-"""Deterministic checks for entity data and trust signals."""
+"""
+Entity & Trust Engine.
+
+Scores:
+  * Structured Entity Data (10 pts) — JSON-LD Organization/Product presence + sameAs
+  * Entity Completeness & Trust (10 pts) — required schema fields + working about/contact pages
+
+Trust-page reachability checks use the centralized SSRF-safe HTTP client with
+HEAD-then-GET fallback, DEFAULT_HEADERS, and response-size limits.
+"""
 from __future__ import annotations
 
 import asyncio
 from urllib.parse import urljoin
-
-import httpx
 
 from app.config import CATEGORY_META, TRUSTED_SAMEAS_DOMAINS, settings
 from app.models import AuditSection, EffortLevel, Finding, ImpactLevel, Severity
@@ -12,8 +19,8 @@ from app.services.html_utils import (
     ParsedPage,
     extract_sameas,
     find_entities_by_type,
-    page_exists_link,
 )
+from app.services.http_client import safe_head_or_get
 
 ORG_TYPES = ("Organization", "Corporation", "LocalBusiness", "Product", "SoftwareApplication")
 
@@ -34,6 +41,7 @@ def score_structured_entity_data(parsed: ParsedPage) -> AuditSection:
         section.findings.append(
             Finding(
                 category="structured_entity_data",
+                dimension=None,
                 severity=Severity.CRITICAL,
                 title="No Organization or Product JSON-LD found",
                 why_it_matters=(
@@ -68,6 +76,7 @@ def score_structured_entity_data(parsed: ParsedPage) -> AuditSection:
         section.findings.append(
             Finding(
                 category="structured_entity_data",
+                dimension=None,
                 severity=Severity.CRITICAL,
                 title="No sameAs links (no JSON-LD entity to check)",
                 why_it_matters="sameAs links let AI systems cross-reference your entity against trusted knowledge graphs.",
@@ -86,6 +95,7 @@ def score_structured_entity_data(parsed: ParsedPage) -> AuditSection:
     section.findings.append(
         Finding(
             category="structured_entity_data",
+            dimension=None,
             severity=Severity.PASS,
             title=f"Valid {entity.get('@type', 'Organization')} JSON-LD found",
             why_it_matters="Structured entity data gives AI systems a machine-readable identity to cite confidently.",
@@ -100,7 +110,9 @@ def score_structured_entity_data(parsed: ParsedPage) -> AuditSection:
 
     same_as_links = extract_sameas(entity)
     trusted_links = [
-        link for link in same_as_links if any(domain in link.lower() for domain in TRUSTED_SAMEAS_DOMAINS)
+        link
+        for link in same_as_links
+        if any(domain in link.lower() for domain in TRUSTED_SAMEAS_DOMAINS)
     ]
 
     if trusted_links:
@@ -108,6 +120,7 @@ def score_structured_entity_data(parsed: ParsedPage) -> AuditSection:
         section.findings.append(
             Finding(
                 category="structured_entity_data",
+                dimension=None,
                 severity=Severity.PASS,
                 title="sameAs links point to trusted knowledge sources",
                 why_it_matters="sameAs links let AI systems verify your entity against Wikipedia, LinkedIn, Crunchbase, etc.",
@@ -123,6 +136,7 @@ def score_structured_entity_data(parsed: ParsedPage) -> AuditSection:
         section.findings.append(
             Finding(
                 category="structured_entity_data",
+                dimension=None,
                 severity=Severity.WARNING,
                 title="No sameAs links to trusted sources",
                 why_it_matters="Without sameAs links, AI systems have no independent way to verify your entity's identity.",
@@ -140,20 +154,27 @@ def score_structured_entity_data(parsed: ParsedPage) -> AuditSection:
     return section
 
 
-async def _page_returns_200(base_url: str, href: str | None) -> bool:
+async def _check_page_reachable(base_url: str, href: str | None) -> bool:
+    """Check whether a trust-page link resolves to a live page.
+
+    Uses the centralized SSRF-safe HTTP client (``safe_head_or_get``) which:
+      * validates the URL scheme and SSRF-safety (all resolved IPs),
+      * validates each redirect target independently,
+      * tries HEAD first, falling back to a bounded GET if the method
+        is not allowed,
+      * applies ``DEFAULT_HEADERS``,
+      * enforces response-size limits.
+
+    Never raises — any failure is treated as "page not reachable".
+    """
     if not href:
         return False
+
+    # Normalize relative/protocol-relative URLs against the audited page's base URL.
     target = urljoin(base_url, href)
-    try:
-        async with httpx.AsyncClient(
-            follow_redirects=True, timeout=settings.request_timeout_seconds
-        ) as client:
-            response = await client.head(target)
-            if response.status_code == 405:  # Some sites block HEAD, so try GET.
-                response = await client.get(target)
-            return response.status_code < 400
-    except Exception:  # noqa: BLE001
-        return False
+
+    result = await safe_head_or_get(target, max_bytes=settings.max_html_bytes)
+    return bool(result.ok and result.status_code is not None and result.status_code < 400)
 
 
 async def score_entity_completeness_trust(parsed: ParsedPage, base_url: str) -> AuditSection:
@@ -167,6 +188,8 @@ async def score_entity_completeness_trust(parsed: ParsedPage, base_url: str) -> 
 
     entities = find_entities_by_type(parsed.json_ld_blocks, ORG_TYPES)
     entity = entities[0] if entities else {}
+
+    # --- Schema field completeness (5 pts) ---
     required_fields = ("name", "logo", "description")
     present_fields = [f for f in required_fields if entity.get(f)]
     missing_fields = [f for f in required_fields if f not in present_fields]
@@ -175,6 +198,7 @@ async def score_entity_completeness_trust(parsed: ParsedPage, base_url: str) -> 
     section.findings.append(
         Finding(
             category="entity_completeness_trust",
+            dimension=None,
             severity=Severity.PASS if schema_points else Severity.WARNING,
             title=(
                 "Organization schema includes name, logo, and description"
@@ -194,12 +218,13 @@ async def score_entity_completeness_trust(parsed: ParsedPage, base_url: str) -> 
         )
     )
 
-    about_href = page_exists_link(parsed.soup, ("about", "/about", "about-us"))
-    contact_href = page_exists_link(parsed.soup, ("contact", "/contact", "contact-us"))
+    # --- Trust page reachability (5 pts) — about / contact ---
+    about_href = parsed.about_href
+    contact_href = parsed.contact_href
 
     (about_ok, contact_ok) = await asyncio.gather(
-        _page_returns_200(base_url, about_href) if about_href else asyncio.sleep(0, result=False),
-        _page_returns_200(base_url, contact_href) if contact_href else asyncio.sleep(0, result=False),
+        _check_page_reachable(base_url, about_href),
+        _check_page_reachable(base_url, contact_href),
     )
 
     trust_points = 0.0
@@ -212,6 +237,7 @@ async def score_entity_completeness_trust(parsed: ParsedPage, base_url: str) -> 
     section.findings.append(
         Finding(
             category="entity_completeness_trust",
+            dimension=None,
             severity=Severity.PASS if trust_points else Severity.WARNING,
             title=(
                 f"Trust pages found: {', '.join(found_pages)}"

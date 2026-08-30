@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+
+# This is a static site on Cloudflare Pages; there are no admin or private
+# directories to hide. The sitemap is declared for crawl discovery.
+
+Sitemap: https://geoauditor.pages.dev/sitemap.xml

@@ -1,0 +1,18 @@
+# Cloudflare Pages headers for SEO and security
+# Docs: https://developers.cloudflare.com/pages/platform/headers/
+
+# Security headers applied to all routes
+/*
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: geolocation=(), microphone=(), camera=()
+  X-XSS-Protection: 1; mode=block
+
+# Static assets: cache for 1 year (content-hashed via ?v= query in markup)
+/static/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# HTML pages: short cache, always revalidate (content may change on deploy)
+/*.html
+  Cache-Control: public, max-age=300, stale-while-revalidate=86400

@@ -4,7 +4,7 @@ from __future__ import annotations
 from app.config import TOTAL_POSSIBLE_SCORE
 from app.models import AnswerabilityRow, AnswerabilityStatus, AuditSection, Finding, Severity
 
-_DIFFERENTIATION_KEYWORDS = (
+_ANSWERABILITY_DIFFERENTIATION_KEYWORDS = (
     "unlike", "compared to", "instead of", "vs.", "vs ", "better than",
     "alternative to", "why choose", "why us", "what sets us apart",
 )
@@ -49,52 +49,63 @@ def select_top_priorities(findings: list[Finding], limit: int = 3) -> list[Findi
 
 
 def build_answerability_matrix(sections: list[AuditSection], page_text: str) -> list[AnswerabilityRow]:
-    query_coverage_findings = {
-        f.category + ":" + f.title: f
-        for section in sections
-        if section.key == "query_coverage"
-        for f in section.findings
+    """Build the answerability matrix from structured ``dimension`` fields.
+
+    The query_coverage engine tags each Finding with a ``dimension`` value
+    ("what", "who", "problem", "outcome").  This function uses that structured
+    field instead of fragile title matching.
+    """
+    dimension_findings: dict[str, Finding] = {}
+    for section in sections:
+        if section.key == "query_coverage":
+            for f in section.findings:
+                if f.dimension:
+                    dimension_findings[f.dimension] = f
+
+    # Map dimension → (matrix question, answerability status)
+    dimension_questions = {
+        "what": "What does this company do?",
+        "who": "Who is it for?",
+        "problem": "What problem does it solve?",
+        "outcome": "What measurable result does it provide?",
     }
 
-    def status_for(dimension_label: str) -> tuple[AnswerabilityStatus, str]:
-        for finding in query_coverage_findings.values():
-            if finding.title.lower().startswith(dimension_label.lower()):
-                if finding.severity == Severity.PASS:
-                    return AnswerabilityStatus.YES, finding.evidence
-                return AnswerabilityStatus.NO, finding.evidence
-        return AnswerabilityStatus.PARTIAL, "Not evaluated."
+    rows: list[AnswerabilityRow] = []
+    for dim, question in dimension_questions.items():
+        finding = dimension_findings.get(dim)
+        if finding is None:
+            rows.append(AnswerabilityRow(
+                question=question,
+                status=AnswerabilityStatus.PARTIAL,
+                evidence="Not evaluated.",
+            ))
+        elif finding.severity == Severity.PASS:
+            rows.append(AnswerabilityRow(
+                question=question,
+                status=AnswerabilityStatus.YES,
+                evidence=finding.evidence,
+            ))
+        else:
+            rows.append(AnswerabilityRow(
+                question=question,
+                status=AnswerabilityStatus.NO,
+                evidence=finding.evidence,
+            ))
 
-    what_status, what_evidence = status_for("What the product/service is")
-    who_status, who_evidence = status_for("Who it is for")
-    problem_status, problem_evidence = status_for("What problem it solves")
-    outcome_status, outcome_evidence = status_for("What measurable outcome it delivers")
-
+    # --- Differentiation / "Why choose it?" ---
     lowered_text = page_text.lower()
-    has_differentiation = any(k in lowered_text for k in _DIFFERENTIATION_KEYWORDS)
-    why_status = AnswerabilityStatus.YES if has_differentiation else AnswerabilityStatus.NO
-    why_evidence = (
-        "Found comparative/differentiation language on the page."
-        if has_differentiation
-        else "No comparative language (e.g. 'unlike', 'vs.', 'why choose us') found."
-    )
+    has_differentiation = any(k in lowered_text for k in _ANSWERABILITY_DIFFERENTIATION_KEYWORDS)
+    rows.append(AnswerabilityRow(
+        question="Why choose it over alternatives?",
+        status=AnswerabilityStatus.YES if has_differentiation else AnswerabilityStatus.NO,
+        evidence=(
+            "Found comparative/differentiation language on the page."
+            if has_differentiation
+            else "No comparative language (e.g. 'unlike', 'vs.', 'why choose us') found."
+        ),
+    ))
 
-    return [
-        AnswerabilityRow(
-            question="What does this company do?", status=what_status, evidence=what_evidence
-        ),
-        AnswerabilityRow(question="Who is it for?", status=who_status, evidence=who_evidence),
-        AnswerabilityRow(
-            question="What problem does it solve?", status=problem_status, evidence=problem_evidence
-        ),
-        AnswerabilityRow(
-            question="What measurable result does it provide?",
-            status=outcome_status,
-            evidence=outcome_evidence,
-        ),
-        AnswerabilityRow(
-            question="Why choose it over alternatives?", status=why_status, evidence=why_evidence
-        ),
-    ]
+    return rows
 
 
 def validate_total_weight() -> None:
