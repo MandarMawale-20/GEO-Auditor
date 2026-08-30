@@ -192,7 +192,7 @@ Open **http://127.0.0.1:8000**.
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `GROQ_API_KEY` | *(unset)* | Enables the LLM semantic layer. App works fully without it. |
-| `GROQ_MODEL` | `llama-3.1-8b-instant` | LLM model name |
+| `GROQ_MODEL` | `qwen/qwen3.8-27b` | LLM model name (Qwen3 reasoning model on Groq) |
 | `GROQ_BASE_URL` | `https://api.groq.com/openai/v1` | Rarely needs changing |
 | `REQUEST_TIMEOUT_SECONDS` | `8.0` | Timeout for fetching the target site/robots/sitemap |
 | `LLM_TIMEOUT_SECONDS` | `6.0` | Timeout per LLM call |

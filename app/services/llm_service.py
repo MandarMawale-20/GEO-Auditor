@@ -104,15 +104,32 @@ async def _call_groq(prompt: str, expect_json: bool) -> tuple[str | None, str | 
         return None, f"Unexpected Groq API error: {exc}"
 
 
+def _strip_reasoning(text: str) -> str:
+    """Remove `` and `` blocks emitted by reasoning models (e.g. Qwen3).
+
+    These models prepend chain-of-thought content wrapped in `` tags
+    before the actual answer. Left intact, that preamble can corrupt JSON
+    parsing, so we strip it on both sides of the first content token.
+    """
+    import re
+
+    # Drop any full  ...  blocks (non-greedy, across newlines).
+    cleaned = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL | re.IGNORECASE)
+    # Also defend against an unterminated trailing  block: strip just the
+    # line(s) that start with the tag (MULTILINE keeps the JSON below intact).
+    cleaned = re.sub(r"(?m)^\s*<think>.*$", "", cleaned, flags=re.IGNORECASE)
+    return cleaned
+
+
 def _strip_json_fences(text: str) -> str:
     """Extract the first balanced JSON object from text that may include markdown fences.
 
     Uses ``json.JSONDecoder.raw_decode`` to find the first parseable JSON
     object, avoiding the greedy regex pitfall where nested objects cause
-    incorrect extraction.
+    incorrect extraction. Reasoning-model `` blocks are stripped first.
     """
     # Strip leading markdown fences / preamble.
-    stripped = text.strip()
+    stripped = _strip_reasoning(text).strip()
     # Remove leading ```json or ``` fences.
     if stripped.startswith("```"):
         # Find the content between fences.

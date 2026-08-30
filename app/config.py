@@ -162,7 +162,7 @@ class Settings:
         default_factory=lambda: os.getenv("GROQ_API_KEY") or None
     )
     groq_model: str = field(
-        default_factory=lambda: os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
+        default_factory=lambda: os.getenv("GROQ_MODEL", "qwen/qwen3.8-27b")
     )
     groq_base_url: str = field(
         default_factory=lambda: os.getenv(
