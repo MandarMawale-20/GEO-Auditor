@@ -12,7 +12,7 @@
     window.API_BASE ||
     (document.querySelector('meta[name="api-base"]') &&
       document.querySelector('meta[name="api-base"]').content) ||
-    "https://geo-auditor-api.onrender.com";
+    "https://geo-auditor-api-xx47.onrender.com";
 
   /* ----------------------------- helpers ----------------------------- */
   function esc(s) {
