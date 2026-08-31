@@ -359,10 +359,15 @@
       const ds = new DecompressionStream("gzip");
       const reader = new Response(new Blob([bytes]).stream()).body.pipeThrough(ds).getReader();
       const decoder = new TextDecoder();
+      // NOTE: must capture the WHOLE {value, done} object from read(); the
+      // previous pattern `done = (await reader.read()).done` assigned the
+      // boolean `.done` property to `done`, making `done.value` always
+      // `undefined` and silently dropping every chunk (the loop ran but
+      // decoded zero bytes — hence "Failed to decode shared report").
+      let result;
       let chunks = "";
-      let done;
-      while (!(done = (await reader.read()).done)) {
-        chunks += decoder.decode(done.value, { stream: true });
+      while (!(result = await reader.read()).done) {
+        chunks += decoder.decode(result.value, { stream: true });
       }
       chunks += decoder.decode();
       return JSON.parse(chunks);
@@ -550,17 +555,34 @@
 
   async function syncLlmToggle() {
     const row = document.getElementById("llm-toggle-row");
-    if (!row) return;
+    const toggle = document.getElementById("llm-enhanced-toggle");
+    if (!row || !toggle) return;
     try {
       const r = await fetch(API_BASE + "/health", { method: "GET" });
       if (r.ok) {
         const h = await r.json();
-        row.style.display = h.llm_enabled ? "block" : "none";
+        row.style.display = "block";
+        toggle.disabled = !h.llm_enabled;
+        toggle.checked = h.llm_enabled && toggle.checked;
+        const badge = toggle.closest(".toggle-switch") && toggle.closest(".toggle-switch").querySelector(".toggle-badge");
+        if (badge) {
+          badge.textContent = h.llm_enabled ? (toggle.checked ? badge.dataset.on : badge.dataset.off) : "OFF";
+          badge.style.opacity = h.llm_enabled ? "1" : "0.6";
+        }
+        if (!h.llm_enabled) {
+          toggle.title = "AI enhancement is not configured on this deployment.";
+        } else {
+          toggle.title = "Use AI-enhanced analysis when available.";
+        }
       } else {
-        row.style.display = "none";
+        row.style.display = "block";
+        toggle.disabled = true;
+        toggle.title = "AI enhancement is unavailable.";
       }
     } catch (e) {
-      row.style.display = "none";
+      row.style.display = "block";
+      toggle.disabled = true;
+      toggle.title = "AI enhancement is unavailable.";
     }
   }
 

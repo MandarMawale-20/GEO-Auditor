@@ -316,7 +316,7 @@ async def render_shared_report(request: Request) -> RedirectResponse:
         data = json.loads(raw_body)
         report = AuditReport.model_validate(data)
     except (ValueError, TypeError) as exc:
-        raise HTTPException(status_code=400, detail=f"Invalid report data: {exc}")
+        raise HTTPException(status_code=400, detail=f"Invalid report data: {exc}") from exc
 
     encoded = encode_report_for_share(report)
     return RedirectResponse(
