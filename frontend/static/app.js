@@ -343,9 +343,14 @@
 
   /* --------------------- shared report (hash) decode --------------------- */
   async function decodeShareHash(hash) {
-    const clean = hash.replace(/^#/, "").replace(/^report#/, "");
-    if (!clean) return null;
+    const raw = hash.replace(/^#/, "").replace(/^report#/, "");
+    if (!raw) return null;
     try {
+      // The server encodes the payload with base64url (RFC 4648 §5), which
+      // uses '-' and '_' instead of standard base64's '+' and '/'. atob() only
+      // accepts standard base64, so translate back before decoding — otherwise
+      // atob() throws InvalidCharacterError and the report fails to open.
+      const clean = raw.replace(/-/g, "+").replace(/_/g, "/");
       const padLen = (4 - (clean.length % 4)) % 4;
       const padding = "=".repeat(padLen);
       const binary = atob(clean + padding);
@@ -519,7 +524,14 @@
         if (resp.ok) {
           const data = await resp.json();
           if (data && data.ok && data.report) {
-            window.location.href = "report.html#" + data.share_url;
+            // share_url is now an absolute URL (…/report.html#<encoded>).
+            // Handle a bare hash fragment too (older API responses) by
+            // resolving it relative to the report viewer.
+            let share = data.share_url || "";
+            if (share && !/^https?:/i.test(share)) {
+              share = "report.html#" + share.replace(/^#/, "");
+            }
+            window.location.href = share;
             return;
           }
           showFormError((data && (data.detail || data.message)) || "Audit failed. Please try again.");
@@ -599,13 +611,18 @@
       }
     }
 
+    // Sample reports are hosted as static files on the SAME origin as this
+    // frontend (Cloudflare Pages), under /samples/{id}.html. Linking to the
+    // API base would open them on the Render backend domain (and they'd be
+    // unstyled there because /static isn't mounted). Keeping them on the
+    // Pages origin means /static/style.css resolves and styling renders.
     document.querySelectorAll("[data-sample]").forEach(function (a) {
-      a.href = API_BASE + "/report/sample/" + a.dataset.sample;
+      a.href = "/samples/" + a.dataset.sample + ".html";
       a.target = "_blank";
       a.rel = "noopener";
     });
     const sampleLink = document.getElementById("sample-link");
-    if (sampleLink) { sampleLink.href = API_BASE + "/report/sample/github"; sampleLink.target = "_blank"; sampleLink.rel = "noopener"; }
+    if (sampleLink) { sampleLink.href = "/samples/github.html"; sampleLink.target = "_blank"; sampleLink.rel = "noopener"; }
 
     const auditForm = document.getElementById("audit-form");
     if (auditForm) { initAuditForm(auditForm); syncLlmToggle(); }

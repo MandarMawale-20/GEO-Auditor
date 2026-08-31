@@ -32,6 +32,7 @@ from typing import Optional
 from fastapi import FastAPI, Form, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
+from fastapi.staticfiles import StaticFiles
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
@@ -78,6 +79,18 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# The Cloudflare Pages frontend is the primary host for the site, but this
+# backend also serves the same static assets (CSS/JS/favicons) and the
+# pre-generated sample reports so the legacy /report/sample/{id} route and any
+# HTML served here directly stay fully styled without depending on Pages.
+_FRONTEND_DIR = BASE_DIR.parent / "frontend"
+_FRONTEND_STATIC_DIR = _FRONTEND_DIR / "static"
+_FRONTEND_SAMPLES_DIR = _FRONTEND_DIR / "samples"
+if _FRONTEND_STATIC_DIR.exists():
+    app.mount("/static", StaticFiles(directory=str(_FRONTEND_STATIC_DIR)), name="static")
+if _FRONTEND_SAMPLES_DIR.exists():
+    app.mount("/samples", StaticFiles(directory=str(_FRONTEND_SAMPLES_DIR), html=True), name="samples")
+
 # Keep logs on stdout so they show up the same way in Uvicorn and the IDE.
 logger = logging.getLogger("geo_auditor")
 logger.setLevel(logging.INFO)
@@ -121,6 +134,10 @@ app.add_middleware(
 # ---------------------------------------------------------------------------
 # Rate limiting (slowapi)
 # ---------------------------------------------------------------------------
+# Rate limiting is applied PER-ROUTE via @limiter.limit(...) and only on the
+# audit endpoints (/audit and /api/audit). No default_limits is configured, so
+# the SlowAPIMiddleware passes every other route (/, /health, /static, /samples,
+# /report/sample/{id}, /api/render-shared) through unthrottled.
 limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
 app.add_middleware(SlowAPIMiddleware)
@@ -317,9 +334,9 @@ async def audit_api(
 ) -> JSONResponse:
     """JSON API for the Cloudflare Pages frontend.
 
-    Returns the full report as JSON, plus a ``share_url`` containing the
-    stateless, encoded copy of the report (no database). The value is safe
-    to use as a URL hash fragment: ``.../#{share_url}``.
+    Returns the full report as JSON, plus an absolute ``share_url`` pointing at
+    the report viewer on the frontend with the stateless, encoded copy of the
+    report in its URL hash fragment (no database).
     """
     report, err = await execute_and_cache_audit(url, use_llm=llm_enhanced)
     if err:
@@ -334,7 +351,7 @@ async def audit_api(
             "ok": True,
             "report_id": report.report_id,
             "report": report.model_dump(),
-            "share_url": encoded,
+            "share_url": f"{FRONTEND_BASE_URL}/report.html#{encoded}",
         }
     )
 

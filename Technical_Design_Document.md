@@ -128,4 +128,3 @@ With additional time, I would add:
 Building GEO Auditor helped me explore how AI search systems discover and use web content and turn that research into a practical product. The project also helped me practice making product decisions quickly and building a useful MVP within a limited time.
 
 From my own experience using Google Search, Gemini, and Google AI Overviews, I came away with the view that GEO does not replace SEO. Traditional SEO signals still appear to matter, while GEO improves how easily AI systems can understand and cite content. In practice, strong visibility in modern search is likely to require a combination of both SEO and GEO.
-U

@@ -1,0 +1,1570 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>GEO Report — https://www.harvey.ai</title>
+  <meta name="description" content="Technical GEO audit report with actionable findings for AI search visibility.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="/static/style.css?v=3">
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="/static/favicon.ico" type="image/png">
+  
+</head>
+<body>
+
+  <!-- ===== Header ===== -->
+  <header class="site-header no-print">
+    <div class="container header-inner">
+      <a href="/" class="logo">
+        <span class="logo-mark">G</span>
+        GEO Auditor
+      </a>
+      
+      <div class="report-actions">
+        
+        <a href="/" class="btn btn-ghost-sm">New audit</a>
+      </div>
+      
+    </div>
+  </header>
+
+  
+
+  <!-- ===== Sticky Top Action Bar ===== -->
+  <div class="no-print" style="border-bottom:1px solid var(--border); position:sticky; top:69px; z-index:10; background:rgba(245,239,226,0.9);">
+    <div class="container" style="padding:0.75rem 0;">
+      <div class="report-actions">
+        
+      </div>
+    </div>
+  </div>
+
+  <main class="container" style="padding-top:2.5rem;">
+
+    <!-- ===== Report URL ===== -->
+    <div class="report-header anim-in" style="margin-bottom:2rem;">
+      <div class="report-header-inner">
+        <div>
+          <span class="report-label">Audited URL</span>
+          <div class="report-url">
+            
+              https://www.harvey.ai
+            
+          </div>          
+        </div>
+        <div class="stat-value-container">
+          <span class="report-label">Score</span>
+          <div style="font-family:var(--font-display); font-size:1.6rem; font-weight:500; color:var(--text); line-height:1;">
+            56 / 100
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== Executive Summary ===== -->
+    <section>
+
+      <!-- Main Score + Grade -->
+      <div class="anim-in" style="display:flex; align-items:center; gap:2rem; flex-wrap:wrap; padding:2.5rem 0; border-bottom:1px solid var(--border); margin-bottom:2.5rem; animation-delay:0.08s;">
+        <div style="display:flex; align-items:center; gap:1.5rem;">
+
+          <!-- Score circle -->
+          <div class="score-circle">
+            
+            
+            
+            <svg viewBox="0 0 100 100" data-pct="56">
+              <circle cx="50" cy="50" r="42" fill="none" stroke="var(--border)" stroke-width="4"/>
+              <circle
+                class="progress-ring__circle"
+                cx="50" cy="50" r="42"
+                fill="none"
+                stroke="var(--accent)"
+                stroke-width="4"
+                stroke-dasharray="276.46 276.46"
+                stroke-dashoffset="276.46"
+                data-target-offset="121.64239999999998"
+                style="transition: stroke-dashoffset 1100ms cubic-bezier(.16,1,.3,1) 200ms;"
+              />
+            </svg>
+            <div class="score-text">
+              <span class="score-num" data-count-to="56">0</span>
+              <span class="score-max">/ 100</span>
+            </div>
+          </div>
+
+          <!-- Grade badge -->
+          <div>
+            <span class="stamp stamp-lg grade-c anim-in" style="animation-delay:0.3s;">C</span>
+          </div>
+          <div>
+            <div class="grade-label" style="font-size:1.05rem; color:var(--text); font-weight:600;">Moderate / partial visibility</div>
+            <div class="muted" style="font-size:0.85rem; margin-top:0.2rem;">56% of AI answerability signals met</div>
+          </div>
+        </div>
+
+        <!-- Meta info -->
+        <div style="margin-left:auto; min-width:200px; text-align:right;">
+          <div class="muted" style="font-size:0.8rem; font-family:var(--font-mono);">
+            
+            <div style="margin-bottom:0.3rem;">Audited 15 Aug 2026</div>
+            
+            <div style="margin-bottom:0.3rem;">Completed in 1408 ms</div>
+            
+            <div>Deterministic scoring</div>
+            
+          </div>
+        </div>
+      </div>
+
+      <!-- Calibration note -->
+      <div class="banner banner-info reveal" style="margin-bottom:2rem;">
+        <span class="banner-icon">ⓘ</span>
+        <div class="banner-content">
+          <div class="banner-title">What this measures</div>
+          <div class="banner-text">
+            This audit measures <strong>on-page GEO readiness</strong>. Large brands may receive
+            lower scores than their real-world AI visibility because off-page authority signals
+            (Wikipedia, Knowledge Graph, backlinks, brand mentions) are intentionally excluded
+            from this scoring model.
+          </div>
+        </div>
+      </div>
+
+      <!-- LLM Error (if any) -->
+      
+
+      <!-- Stats Row -->
+      <div class="stats-row reveal" style="margin-bottom:2.5rem;">
+        <div class="stat-item">
+          <div class="stat-value">10</div>
+          <div class="stat-label">Categories</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-value" style="color:var(--danger);">
+            
+            2
+          </div>
+          <div class="stat-label">Critical</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-value" style="color:var(--warning);">
+            
+            6
+          </div>
+          <div class="stat-label">Warnings</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-value" style="color:var(--success);">
+            
+            13
+          </div>
+          <div class="stat-label">Passing</div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ===== Top 3 Priorities ===== -->
+    
+    <section class="reveal" style="margin-bottom:2.5rem;">
+      <h2>Top 3 priorities for Monday morning</h2>
+      <p class="muted" style="margin-bottom:1.25rem; font-size:0.9rem;">
+        Highest impact, lowest effort. Fix these first.
+      </p>
+      <div class="grid-2">
+        
+        <div class="finding warning">
+          <div class="finding-header">
+            <span class="badge badge-warning
+              ">
+              WARNING
+            </span>
+            <h3 class="finding-title">No strong citation-ready snippet found</h3>
+            <div class="finding-meta">
+              Impact: high
+            </div>
+          </div>
+          <div class="finding-body">
+            <div class="why-it-matters">AI answer engines often quote a single self-contained paragraph verbatim. Without one, they must stitch together a summary themselves — or skip citing you.</div>
+            
+            <div class="code-block-wrapper">
+              <pre class="code-block"><code>[Company] is a [category] that helps [audience] [achieve outcome], reducing/increasing [metric] by [X%].</code></pre>
+              <button class="copy-btn no-print" onclick="copyToClipboard(this)">Copy fix</button>
+            </div>
+            
+            <p class="muted" style="font-size:0.82rem; margin-top:0.5rem;"><span style="color:var(--text);">Fix:</span> Add one 20-60 word paragraph near the top of the page that names your company, states your product category, and states a measurable outcome.</p>
+          </div>
+        </div>
+        
+        <div class="finding critical">
+          <div class="finding-header">
+            <span class="badge badge-danger
+              ">
+              CRITICAL
+            </span>
+            <h3 class="finding-title">No Organization or Product JSON-LD found</h3>
+            <div class="finding-meta">
+              Impact: high
+            </div>
+          </div>
+          <div class="finding-body">
+            <div class="why-it-matters">AI systems rely on structured data (JSON-LD) to build entity confidence about who you are. Without it, the model has to infer everything from unstructured prose, which is far less reliable for citation.</div>
+            
+            <div class="code-block-wrapper">
+              <pre class="code-block"><code>&lt;script type=&#34;application/ld+json&#34;&gt;
+{
+  &#34;@context&#34;: &#34;https://schema.org&#34;,
+  &#34;@type&#34;: &#34;Organization&#34;,
+  &#34;name&#34;: &#34;Your Company Name&#34;,
+  &#34;url&#34;: &#34;https://yourdomain.com&#34;,
+  &#34;logo&#34;: &#34;https://yourdomain.com/logo.png&#34;,
+  &#34;description&#34;: &#34;One sentence describing what you do and for whom.&#34;,
+  &#34;sameAs&#34;: [
+    &#34;https://www.linkedin.com/company/yourcompany&#34;,
+    &#34;https://x.com/yourcompany&#34;
+  ]
+}
+&lt;/script&gt;</code></pre>
+              <button class="copy-btn no-print" onclick="copyToClipboard(this)">Copy fix</button>
+            </div>
+            
+            <p class="muted" style="font-size:0.82rem; margin-top:0.5rem;"><span style="color:var(--text);">Fix:</span> Add an Organization JSON-LD block to your homepage &lt;head&gt;.</p>
+          </div>
+        </div>
+        
+        <div class="finding warning">
+          <div class="finding-header">
+            <span class="badge badge-warning
+              ">
+              WARNING
+            </span>
+            <h3 class="finding-title">Organization schema is missing: name, logo, description</h3>
+            <div class="finding-meta">
+              Impact: medium
+            </div>
+          </div>
+          <div class="finding-body">
+            <div class="why-it-matters">AI systems use name/logo/description as baseline entity confidence signals before deciding whether to cite a source.</div>
+            
+            <p class="muted" style="font-size:0.82rem; margin-top:0.5rem;"><span style="color:var(--text);">Fix:</span> Ensure your Organization JSON-LD includes name, logo, and description fields.</p>
+          </div>
+        </div>
+        
+      </div>
+    </section>
+    
+
+    <!-- ===== Score Breakdown ===== -->
+    <section class="reveal" style="margin-bottom:2.5rem;">
+      <h2>Score breakdown</h2>
+      <p class="muted" style="margin-bottom:1.25rem; font-size:0.9rem;">
+        10 categories across 100 possible points.
+      </p>
+
+      <div style="display:flex; flex-direction:column; gap:0.5rem;">
+        
+        
+        
+        <div class="accordion-item">
+          <div class="accordion-header" onclick="toggleSection(this)" role="button" tabindex="0"
+               aria-expanded="false" aria-controls="section-1">
+            <div class="accordion-header-row">
+              <div style="display:flex; align-items:center; gap:0.75rem;">
+                <span class="strong" style="font-family:var(--font-mono); font-size:1.05rem; min-width:38px;">15.0</span>
+                <span class="muted" style="font-family:var(--font-mono); font-size:0.8rem; min-width:30px;">/ 15</span>
+                <span>AI Crawler Accessibility</span>
+                
+              </div>
+              <div style="display:flex; align-items:center; gap:0.75rem;">
+                <span class="muted" style="font-family:var(--font-mono); font-size:0.8rem;">100%</span>
+                <span class="accordion-chevron" role="presentation">▸</span>
+              </div>
+            </div>
+            <div class="progress-bar">
+              <div class="progress-fill"
+                style="width:100%; background:var(--success);"></div>
+            </div>
+          </div>
+          <div class="accordion-content" id="section-1">
+            <div class="accordion-content-inner">
+              <div class="muted" style="font-family:var(--font-mono); font-size:0.74rem; letter-spacing:0.04em; text-transform:uppercase; margin-bottom:0.6rem; padding-top:0.75rem;">
+                Technical Accessibility
+              </div>
+              
+              <div class="finding pass" style="padding:0.75rem; margin-bottom:0.5rem;">
+                <div class="finding-header">
+                  <span class="badge badge-success
+                    " style="font-size:0.62rem;">
+                    PASS
+                  </span>
+                  <span class="finding-title" style="font-size:0.92rem;">OAI-SearchBot is allowed to crawl</span>
+                </div>
+                
+                <p class="muted" style="font-size:0.82rem;">robots.txt does not mention OAI-SearchBot (no &#39;Disallow: /&#39; found).</p>
+                
+              </div>
+              
+              <div class="finding pass" style="padding:0.75rem; margin-bottom:0.5rem;">
+                <div class="finding-header">
+                  <span class="badge badge-success
+                    " style="font-size:0.62rem;">
+                    PASS
+                  </span>
+                  <span class="finding-title" style="font-size:0.92rem;">PerplexityBot is allowed to crawl</span>
+                </div>
+                
+                <p class="muted" style="font-size:0.82rem;">robots.txt does not mention PerplexityBot (no &#39;Disallow: /&#39; found).</p>
+                
+              </div>
+              
+              <div class="finding pass" style="padding:0.75rem; margin-bottom:0.5rem;">
+                <div class="finding-header">
+                  <span class="badge badge-success
+                    " style="font-size:0.62rem;">
+                    PASS
+                  </span>
+                  <span class="finding-title" style="font-size:0.92rem;">ClaudeBot is allowed to crawl</span>
+                </div>
+                
+                <p class="muted" style="font-size:0.82rem;">robots.txt does not mention ClaudeBot (no &#39;Disallow: /&#39; found).</p>
+                
+              </div>
+              
+              <div class="finding pass" style="padding:0.75rem; margin-bottom:0.5rem;">
+                <div class="finding-header">
+                  <span class="badge badge-success
+                    " style="font-size:0.62rem;">
+                    PASS
+                  </span>
+                  <span class="finding-title" style="font-size:0.92rem;">Googlebot is allowed to crawl</span>
+                </div>
+                
+                <p class="muted" style="font-size:0.82rem;">robots.txt does not mention Googlebot (no &#39;Disallow: /&#39; found).</p>
+                
+              </div>
+              
+            </div>
+          </div>
+        </div>
+        
+        
+        
+        <div class="accordion-item">
+          <div class="accordion-header" onclick="toggleSection(this)" role="button" tabindex="0"
+               aria-expanded="false" aria-controls="section-2">
+            <div class="accordion-header-row">
+              <div style="display:flex; align-items:center; gap:0.75rem;">
+                <span class="strong" style="font-family:var(--font-mono); font-size:1.05rem; min-width:38px;">5</span>
+                <span class="muted" style="font-family:var(--font-mono); font-size:0.8rem; min-width:30px;">/ 5</span>
+                <span>JavaScript Rendering Risk</span>
+                
+              </div>
+              <div style="display:flex; align-items:center; gap:0.75rem;">
+                <span class="muted" style="font-family:var(--font-mono); font-size:0.8rem;">100%</span>
+                <span class="accordion-chevron" role="presentation">▸</span>
+              </div>
+            </div>
+            <div class="progress-bar">
+              <div class="progress-fill"
+                style="width:100%; background:var(--success);"></div>
+            </div>
+          </div>
+          <div class="accordion-content" id="section-2">
+            <div class="accordion-content-inner">
+              <div class="muted" style="font-family:var(--font-mono); font-size:0.74rem; letter-spacing:0.04em; text-transform:uppercase; margin-bottom:0.6rem; padding-top:0.75rem;">
+                Technical Accessibility
+              </div>
+              
+              <div class="finding pass" style="padding:0.75rem; margin-bottom:0.5rem;">
+                <div class="finding-header">
+                  <span class="badge badge-success
+                    " style="font-size:0.62rem;">
+                    PASS
+                  </span>
+                  <span class="finding-title" style="font-size:0.92rem;">Raw HTML contains sufficient text for AI crawlers</span>
+                </div>
+                
+                <p class="muted" style="font-size:0.82rem;">Raw HTML contains approximately 1339 visible words. SPA markers detected: False (checked for __NEXT_DATA__, id=&#34;root&#34;, bundle.js, __NUXT__).</p>
+                
+              </div>
+              
+            </div>
+          </div>
+        </div>
+        
+        
+        
+        <div class="accordion-item">
+          <div class="accordion-header" onclick="toggleSection(this)" role="button" tabindex="0"
+               aria-expanded="false" aria-controls="section-3">
+            <div class="accordion-header-row">
+              <div style="display:flex; align-items:center; gap:0.75rem;">
+                <span class="strong" style="font-family:var(--font-mono); font-size:1.05rem; min-width:38px;">0</span>
+                <span class="muted" style="font-family:var(--font-mono); font-size:0.8rem; min-width:30px;">/ 10</span>
+                <span>Structured Entity Data</span>
+                
+              </div>
+              <div style="display:flex; align-items:center; gap:0.75rem;">
+                <span class="muted" style="font-family:var(--font-mono); font-size:0.8rem;">0%</span>
+                <span class="accordion-chevron" role="presentation">▸</span>
+              </div>
+            </div>
+            <div class="progress-bar">
+              <div class="progress-fill"
+                style="width:0%; background:var(--danger);"></div>
+            </div>
+          </div>
+          <div class="accordion-content" id="section-3">
+            <div class="accordion-content-inner">
+              <div class="muted" style="font-family:var(--font-mono); font-size:0.74rem; letter-spacing:0.04em; text-transform:uppercase; margin-bottom:0.6rem; padding-top:0.75rem;">
+                Entity and Trust
+              </div>
+              
+              <div class="finding critical" style="padding:0.75rem; margin-bottom:0.5rem;">
+                <div class="finding-header">
+                  <span class="badge badge-danger
+                    " style="font-size:0.62rem;">
+                    CRITICAL
+                  </span>
+                  <span class="finding-title" style="font-size:0.92rem;">No Organization or Product JSON-LD found</span>
+                </div>
+                
+                <details>
+                  <summary>Evidence</summary>
+                  <div class="evidence">No JSON-LD block with an Organization, Product, or SoftwareApplication type was found.</div>
+                </details>
+                <p class="muted" style="font-size:0.82rem; margin-top:0.4rem;"><span style="color:var(--text);">Recommendation:</span> Add an Organization JSON-LD block to your homepage &lt;head&gt;.</p>
+                
+                <div class="code-block-wrapper" style="margin-top:0.5rem;">
+                  <pre class="code-block"><code>&lt;script type=&#34;application/ld+json&#34;&gt;
+{
+  &#34;@context&#34;: &#34;https://schema.org&#34;,
+  &#34;@type&#34;: &#34;Organization&#34;,
+  &#34;name&#34;: &#34;Your Company Name&#34;,
+  &#34;url&#34;: &#34;https://yourdomain.com&#34;,
+  &#34;logo&#34;: &#34;https://yourdomain.com/logo.png&#34;,
+  &#34;description&#34;: &#34;One sentence describing what you do and for whom.&#34;,
+  &#34;sameAs&#34;: [
+    &#34;https://www.linkedin.com/company/yourcompany&#34;,
+    &#34;https://x.com/yourcompany&#34;
+  ]
+}
+&lt;/script&gt;</code></pre>
+                  <button class="copy-btn no-print" onclick="copyToClipboard(this)">Copy</button>
+                </div>
+                
+                
+              </div>
+              
+              <div class="finding critical" style="padding:0.75rem; margin-bottom:0.5rem;">
+                <div class="finding-header">
+                  <span class="badge badge-danger
+                    " style="font-size:0.62rem;">
+                    CRITICAL
+                  </span>
+                  <span class="finding-title" style="font-size:0.92rem;">No sameAs links (no JSON-LD entity to check)</span>
+                </div>
+                
+                <details>
+                  <summary>Evidence</summary>
+                  <div class="evidence">No Organization entity exists to hold a sameAs array.</div>
+                </details>
+                <p class="muted" style="font-size:0.82rem; margin-top:0.4rem;"><span style="color:var(--text);">Recommendation:</span> Add the Organization JSON-LD above, including a sameAs array.</p>
+                
+                
+              </div>
+              
+            </div>
+          </div>
+        </div>
+        
+        
+        
+        <div class="accordion-item">
+          <div class="accordion-header" onclick="toggleSection(this)" role="button" tabindex="0"
+               aria-expanded="false" aria-controls="section-4">
+            <div class="accordion-header-row">
+              <div style="display:flex; align-items:center; gap:0.75rem;">
+                <span class="strong" style="font-family:var(--font-mono); font-size:1.05rem; min-width:38px;">5.0</span>
+                <span class="muted" style="font-family:var(--font-mono); font-size:0.8rem; min-width:30px;">/ 10</span>
+                <span>Entity Completeness and Trust Signals</span>
+                
+              </div>
+              <div style="display:flex; align-items:center; gap:0.75rem;">
+                <span class="muted" style="font-family:var(--font-mono); font-size:0.8rem;">50%</span>
+                <span class="accordion-chevron" role="presentation">▸</span>
+              </div>
+            </div>
+            <div class="progress-bar">
+              <div class="progress-fill"
+                style="width:50%; background:var(--warning);"></div>
+            </div>
+          </div>
+          <div class="accordion-content" id="section-4">
+            <div class="accordion-content-inner">
+              <div class="muted" style="font-family:var(--font-mono); font-size:0.74rem; letter-spacing:0.04em; text-transform:uppercase; margin-bottom:0.6rem; padding-top:0.75rem;">
+                Entity and Trust
+              </div>
+              
+              <div class="finding warning" style="padding:0.75rem; margin-bottom:0.5rem;">
+                <div class="finding-header">
+                  <span class="badge badge-warning
+                    " style="font-size:0.62rem;">
+                    WARNING
+                  </span>
+                  <span class="finding-title" style="font-size:0.92rem;">Organization schema is missing: name, logo, description</span>
+                </div>
+                
+                <details>
+                  <summary>Evidence</summary>
+                  <div class="evidence">Present fields: none. Missing: [&#39;name&#39;, &#39;logo&#39;, &#39;description&#39;].</div>
+                </details>
+                <p class="muted" style="font-size:0.82rem; margin-top:0.4rem;"><span style="color:var(--text);">Recommendation:</span> Ensure your Organization JSON-LD includes name, logo, and description fields.</p>
+                
+                
+              </div>
+              
+              <div class="finding pass" style="padding:0.75rem; margin-bottom:0.5rem;">
+                <div class="finding-header">
+                  <span class="badge badge-success
+                    " style="font-size:0.62rem;">
+                    PASS
+                  </span>
+                  <span class="finding-title" style="font-size:0.92rem;">Trust pages found: About, Contact</span>
+                </div>
+                
+                <p class="muted" style="font-size:0.82rem;">about link: /en-US/company (200 OK: True); contact link: /en-US/contact-sales (200 OK: True).</p>
+                
+              </div>
+              
+            </div>
+          </div>
+        </div>
+        
+        
+        
+        <div class="accordion-item">
+          <div class="accordion-header" onclick="toggleSection(this)" role="button" tabindex="0"
+               aria-expanded="false" aria-controls="section-5">
+            <div class="accordion-header-row">
+              <div style="display:flex; align-items:center; gap:0.75rem;">
+                <span class="strong" style="font-family:var(--font-mono); font-size:1.05rem; min-width:38px;">10.0</span>
+                <span class="muted" style="font-family:var(--font-mono); font-size:0.8rem; min-width:30px;">/ 15</span>
+                <span>Quote Readiness / Answer Extractability</span>
+                
+              </div>
+              <div style="display:flex; align-items:center; gap:0.75rem;">
+                <span class="muted" style="font-family:var(--font-mono); font-size:0.8rem;">67%</span>
+                <span class="accordion-chevron" role="presentation">▸</span>
+              </div>
+            </div>
+            <div class="progress-bar">
+              <div class="progress-fill"
+                style="width:67%; background:var(--warning);"></div>
+            </div>
+          </div>
+          <div class="accordion-content" id="section-5">
+            <div class="accordion-content-inner">
+              <div class="muted" style="font-family:var(--font-mono); font-size:0.74rem; letter-spacing:0.04em; text-transform:uppercase; margin-bottom:0.6rem; padding-top:0.75rem;">
+                Content Extractability
+              </div>
+              
+              <div class="finding warning" style="padding:0.75rem; margin-bottom:0.5rem;">
+                <div class="finding-header">
+                  <span class="badge badge-warning
+                    " style="font-size:0.62rem;">
+                    WARNING
+                  </span>
+                  <span class="finding-title" style="font-size:0.92rem;">No question-style H2/H3 headings found</span>
+                </div>
+                
+                <details>
+                  <summary>Evidence</summary>
+                  <div class="evidence">Checked 42 H2/H3 headings; none were phrased as questions.</div>
+                </details>
+                <p class="muted" style="font-size:0.82rem; margin-top:0.4rem;"><span style="color:var(--text);">Recommendation:</span> Rewrite key section headings as direct questions your customers actually ask.</p>
+                
+                <div class="code-block-wrapper" style="margin-top:0.5rem;">
+                  <pre class="code-block"><code>&lt;h2&gt;What is [Your Product]?&lt;/h2&gt;
+&lt;p&gt;[Your Product] is a ... that helps [audience] ... by ....&lt;/p&gt;</code></pre>
+                  <button class="copy-btn no-print" onclick="copyToClipboard(this)">Copy</button>
+                </div>
+                
+                
+              </div>
+              
+              <div class="finding pass" style="padding:0.75rem; margin-bottom:0.5rem;">
+                <div class="finding-header">
+                  <span class="badge badge-success
+                    " style="font-size:0.62rem;">
+                    PASS
+                  </span>
+                  <span class="finding-title" style="font-size:0.92rem;">Found a well-sized lead paragraph (20-50 words) following a heading</span>
+                </div>
+                
+                <p class="muted" style="font-size:0.82rem;">Under &#34;Harvey Academy→&#34;: &#34;Introducing Harvey Academy: on-demand training, expert workflows, and step-by-step guidance to help legal teams get the most out of Harvey.&#34;</p>
+                
+              </div>
+              
+              <div class="finding pass" style="padding:0.75rem; margin-bottom:0.5rem;">
+                <div class="finding-header">
+                  <span class="badge badge-success
+                    " style="font-size:0.62rem;">
+                    PASS
+                  </span>
+                  <span class="finding-title" style="font-size:0.92rem;">No generic marketing fluff detected</span>
+                </div>
+                
+                <p class="muted" style="font-size:0.82rem;">No fluff phrases matched.</p>
+                
+              </div>
+              
+            </div>
+          </div>
+        </div>
+        
+        
+        
+        <div class="accordion-item">
+          <div class="accordion-header" onclick="toggleSection(this)" role="button" tabindex="0"
+               aria-expanded="false" aria-controls="section-6">
+            <div class="accordion-header-row">
+              <div style="display:flex; align-items:center; gap:0.75rem;">
+                <span class="strong" style="font-family:var(--font-mono); font-size:1.05rem; min-width:38px;">5.0</span>
+                <span class="muted" style="font-family:var(--font-mono); font-size:0.8rem; min-width:30px;">/ 10</span>
+                <span>Fact Density and Structured Tables</span>
+                
+              </div>
+              <div style="display:flex; align-items:center; gap:0.75rem;">
+                <span class="muted" style="font-family:var(--font-mono); font-size:0.8rem;">50%</span>
+                <span class="accordion-chevron" role="presentation">▸</span>
+              </div>
+            </div>
+            <div class="progress-bar">
+              <div class="progress-fill"
+                style="width:50%; background:var(--warning);"></div>
+            </div>
+          </div>
+          <div class="accordion-content" id="section-6">
+            <div class="accordion-content-inner">
+              <div class="muted" style="font-family:var(--font-mono); font-size:0.74rem; letter-spacing:0.04em; text-transform:uppercase; margin-bottom:0.6rem; padding-top:0.75rem;">
+                Content Extractability
+              </div>
+              
+              <div class="finding warning" style="padding:0.75rem; margin-bottom:0.5rem;">
+                <div class="finding-header">
+                  <span class="badge badge-warning
+                    " style="font-size:0.62rem;">
+                    WARNING
+                  </span>
+                  <span class="finding-title" style="font-size:0.92rem;">No &lt;table&gt; elements found</span>
+                </div>
+                
+                <details>
+                  <summary>Evidence</summary>
+                  <div class="evidence">Found 0 &lt;table&gt; tag(s) in the DOM.</div>
+                </details>
+                <p class="muted" style="font-size:0.82rem; margin-top:0.4rem;"><span style="color:var(--text);">Recommendation:</span> Present comparable data (pricing tiers, feature comparisons, specs) in an HTML &lt;table&gt;.</p>
+                
+                <div class="code-block-wrapper" style="margin-top:0.5rem;">
+                  <pre class="code-block"><code>&lt;table&gt;
+  &lt;tr&gt;&lt;th&gt;Plan&lt;/th&gt;&lt;th&gt;Price&lt;/th&gt;&lt;th&gt;Key Feature&lt;/th&gt;&lt;/tr&gt;
+  &lt;tr&gt;&lt;td&gt;Starter&lt;/td&gt;&lt;td&gt;$0&lt;/td&gt;&lt;td&gt;...&lt;/td&gt;&lt;/tr&gt;
+&lt;/table&gt;</code></pre>
+                  <button class="copy-btn no-print" onclick="copyToClipboard(this)">Copy</button>
+                </div>
+                
+                
+              </div>
+              
+              <div class="finding pass" style="padding:0.75rem; margin-bottom:0.5rem;">
+                <div class="finding-header">
+                  <span class="badge badge-success
+                    " style="font-size:0.62rem;">
+                    PASS
+                  </span>
+                  <span class="finding-title" style="font-size:0.92rem;">Numeric density: 5.6/500 words, 14 list(s) found</span>
+                </div>
+                
+                <p class="muted" style="font-size:0.82rem;">Measured 5.6 numeric tokens per 500 words and 14 &lt;ol&gt;/&lt;ul&gt; elements.</p>
+                
+              </div>
+              
+            </div>
+          </div>
+        </div>
+        
+        
+        
+        <div class="accordion-item">
+          <div class="accordion-header" onclick="toggleSection(this)" role="button" tabindex="0"
+               aria-expanded="false" aria-controls="section-7">
+            <div class="accordion-header-row">
+              <div style="display:flex; align-items:center; gap:0.75rem;">
+                <span class="strong" style="font-family:var(--font-mono); font-size:1.05rem; min-width:38px;">0.0</span>
+                <span class="muted" style="font-family:var(--font-mono); font-size:0.8rem; min-width:30px;">/ 5</span>
+                <span>Media-to-Text Balance</span>
+                
+              </div>
+              <div style="display:flex; align-items:center; gap:0.75rem;">
+                <span class="muted" style="font-family:var(--font-mono); font-size:0.8rem;">0%</span>
+                <span class="accordion-chevron" role="presentation">▸</span>
+              </div>
+            </div>
+            <div class="progress-bar">
+              <div class="progress-fill"
+                style="width:0%; background:var(--danger);"></div>
+            </div>
+          </div>
+          <div class="accordion-content" id="section-7">
+            <div class="accordion-content-inner">
+              <div class="muted" style="font-family:var(--font-mono); font-size:0.74rem; letter-spacing:0.04em; text-transform:uppercase; margin-bottom:0.6rem; padding-top:0.75rem;">
+                Content Extractability
+              </div>
+              
+              <div class="finding warning" style="padding:0.75rem; margin-bottom:0.5rem;">
+                <div class="finding-header">
+                  <span class="badge badge-warning
+                    " style="font-size:0.62rem;">
+                    WARNING
+                  </span>
+                  <span class="finding-title" style="font-size:0.92rem;">Page is image-heavy — key info may be trapped in graphics</span>
+                </div>
+                
+                <details>
+                  <summary>Evidence</summary>
+                  <div class="evidence">1339 words across 72 &lt;img&gt; tags (ratio 18.6:1).</div>
+                </details>
+                <p class="muted" style="font-size:0.82rem; margin-top:0.4rem;"><span style="color:var(--text);">Recommendation:</span> Ensure any information conveyed only in images (pricing, stats, feature lists) also exists as real text.</p>
+                
+                
+              </div>
+              
+            </div>
+          </div>
+        </div>
+        
+        
+        
+        <div class="accordion-item">
+          <div class="accordion-header" onclick="toggleSection(this)" role="button" tabindex="0"
+               aria-expanded="false" aria-controls="section-8">
+            <div class="accordion-header-row">
+              <div style="display:flex; align-items:center; gap:0.75rem;">
+                <span class="strong" style="font-family:var(--font-mono); font-size:1.05rem; min-width:38px;">11.2</span>
+                <span class="muted" style="font-family:var(--font-mono); font-size:0.8rem; min-width:30px;">/ 15</span>
+                <span>Query Coverage</span>
+                
+              </div>
+              <div style="display:flex; align-items:center; gap:0.75rem;">
+                <span class="muted" style="font-family:var(--font-mono); font-size:0.8rem;">75%</span>
+                <span class="accordion-chevron" role="presentation">▸</span>
+              </div>
+            </div>
+            <div class="progress-bar">
+              <div class="progress-fill"
+                style="width:75%; background:var(--success);"></div>
+            </div>
+          </div>
+          <div class="accordion-content" id="section-8">
+            <div class="accordion-content-inner">
+              <div class="muted" style="font-family:var(--font-mono); font-size:0.74rem; letter-spacing:0.04em; text-transform:uppercase; margin-bottom:0.6rem; padding-top:0.75rem;">
+                Value and Freshness
+              </div>
+              
+              <div class="finding pass" style="padding:0.75rem; margin-bottom:0.5rem;">
+                <div class="finding-header">
+                  <span class="badge badge-success
+                    " style="font-size:0.62rem;">
+                    PASS
+                  </span>
+                  <span class="finding-title" style="font-size:0.92rem;">What the product/service is: answered</span>
+                </div>
+                
+                <p class="muted" style="font-size:0.82rem;">Heuristic: page has substantive text content.</p>
+                
+              </div>
+              
+              <div class="finding warning" style="padding:0.75rem; margin-bottom:0.5rem;">
+                <div class="finding-header">
+                  <span class="badge badge-warning
+                    " style="font-size:0.62rem;">
+                    WARNING
+                  </span>
+                  <span class="finding-title" style="font-size:0.92rem;">Who it is for: not clearly answered</span>
+                </div>
+                
+                <details>
+                  <summary>Evidence</summary>
+                  <div class="evidence">No clear evidence found in page text.</div>
+                </details>
+                <p class="muted" style="font-size:0.82rem; margin-top:0.4rem;"><span style="color:var(--text);">Recommendation:</span> Add a clear, explicit statement covering: who it is for.</p>
+                
+                
+              </div>
+              
+              <div class="finding pass" style="padding:0.75rem; margin-bottom:0.5rem;">
+                <div class="finding-header">
+                  <span class="badge badge-success
+                    " style="font-size:0.62rem;">
+                    PASS
+                  </span>
+                  <span class="finding-title" style="font-size:0.92rem;">What problem it solves: answered</span>
+                </div>
+                
+                <p class="muted" style="font-size:0.82rem;">Heuristic: found problem-framing language.</p>
+                
+              </div>
+              
+              <div class="finding pass" style="padding:0.75rem; margin-bottom:0.5rem;">
+                <div class="finding-header">
+                  <span class="badge badge-success
+                    " style="font-size:0.62rem;">
+                    PASS
+                  </span>
+                  <span class="finding-title" style="font-size:0.92rem;">What measurable outcome it delivers: answered</span>
+                </div>
+                
+                <p class="muted" style="font-size:0.82rem;">Heuristic: found outcome/metric language.</p>
+                
+              </div>
+              
+            </div>
+          </div>
+        </div>
+        
+        
+        
+        <div class="accordion-item">
+          <div class="accordion-header" onclick="toggleSection(this)" role="button" tabindex="0"
+               aria-expanded="false" aria-controls="section-9">
+            <div class="accordion-header-row">
+              <div style="display:flex; align-items:center; gap:0.75rem;">
+                <span class="strong" style="font-family:var(--font-mono); font-size:1.05rem; min-width:38px;">0.0</span>
+                <span class="muted" style="font-family:var(--font-mono); font-size:0.8rem; min-width:30px;">/ 10</span>
+                <span>AI Citation Snippet Quality</span>
+                
+              </div>
+              <div style="display:flex; align-items:center; gap:0.75rem;">
+                <span class="muted" style="font-family:var(--font-mono); font-size:0.8rem;">0%</span>
+                <span class="accordion-chevron" role="presentation">▸</span>
+              </div>
+            </div>
+            <div class="progress-bar">
+              <div class="progress-fill"
+                style="width:0%; background:var(--danger);"></div>
+            </div>
+          </div>
+          <div class="accordion-content" id="section-9">
+            <div class="accordion-content-inner">
+              <div class="muted" style="font-family:var(--font-mono); font-size:0.74rem; letter-spacing:0.04em; text-transform:uppercase; margin-bottom:0.6rem; padding-top:0.75rem;">
+                Value and Freshness
+              </div>
+              
+              <div class="finding warning" style="padding:0.75rem; margin-bottom:0.5rem;">
+                <div class="finding-header">
+                  <span class="badge badge-warning
+                    " style="font-size:0.62rem;">
+                    WARNING
+                  </span>
+                  <span class="finding-title" style="font-size:0.92rem;">No strong citation-ready snippet found</span>
+                </div>
+                
+                <details>
+                  <summary>Evidence</summary>
+                  <div class="evidence">Candidate: &#34;Introducing Harvey Academy: on-demand training, expert workflows, and step-by-step guidance to help legal teams get the most out of Harvey.&#34; — Heuristic: paragraph is well-sized but lacks a measurable benefit or number.</div>
+                </details>
+                <p class="muted" style="font-size:0.82rem; margin-top:0.4rem;"><span style="color:var(--text);">Recommendation:</span> Add one 20-60 word paragraph near the top of the page that names your company, states your product category, and states a measurable outcome.</p>
+                
+                <div class="code-block-wrapper" style="margin-top:0.5rem;">
+                  <pre class="code-block"><code>[Company] is a [category] that helps [audience] [achieve outcome], reducing/increasing [metric] by [X%].</code></pre>
+                  <button class="copy-btn no-print" onclick="copyToClipboard(this)">Copy</button>
+                </div>
+                
+                
+              </div>
+              
+            </div>
+          </div>
+        </div>
+        
+        
+        
+        <div class="accordion-item">
+          <div class="accordion-header" onclick="toggleSection(this)" role="button" tabindex="0"
+               aria-expanded="false" aria-controls="section-10">
+            <div class="accordion-header-row">
+              <div style="display:flex; align-items:center; gap:0.75rem;">
+                <span class="strong" style="font-family:var(--font-mono); font-size:1.05rem; min-width:38px;">5</span>
+                <span class="muted" style="font-family:var(--font-mono); font-size:0.8rem; min-width:30px;">/ 5</span>
+                <span>Freshness Signals</span>
+                
+              </div>
+              <div style="display:flex; align-items:center; gap:0.75rem;">
+                <span class="muted" style="font-family:var(--font-mono); font-size:0.8rem;">100%</span>
+                <span class="accordion-chevron" role="presentation">▸</span>
+              </div>
+            </div>
+            <div class="progress-bar">
+              <div class="progress-fill"
+                style="width:100%; background:var(--success);"></div>
+            </div>
+          </div>
+          <div class="accordion-content" id="section-10">
+            <div class="accordion-content-inner">
+              <div class="muted" style="font-family:var(--font-mono); font-size:0.74rem; letter-spacing:0.04em; text-transform:uppercase; margin-bottom:0.6rem; padding-top:0.75rem;">
+                Value and Freshness
+              </div>
+              
+              <div class="finding pass" style="padding:0.75rem; margin-bottom:0.5rem;">
+                <div class="finding-header">
+                  <span class="badge badge-success
+                    " style="font-size:0.62rem;">
+                    PASS
+                  </span>
+                  <span class="finding-title" style="font-size:0.92rem;">Most recent freshness signal is 1 day old</span>
+                </div>
+                
+                <p class="muted" style="font-size:0.82rem;">Found via sitemap.xml &lt;lastmod&gt;: 2026-08-14.</p>
+                
+              </div>
+              
+            </div>
+          </div>
+        </div>
+        
+      </div>
+    </section>
+
+    <!-- ===== AI Answerability Matrix ===== -->
+    
+    <section class="reveal" style="margin-bottom:2.5rem;">
+      <h2>AI answerability matrix</h2>
+      <p class="muted" style="margin-bottom:1.25rem; font-size:0.9rem;">
+        Whether your content answers common AI-search questions.
+      </p>
+
+      <div class="audit-table" style="margin:0;">
+        <table style="width:100%; border-collapse:collapse;">
+          <thead>
+            <tr>
+              <th style="text-align:left; padding:0.6rem 0.75rem; color:var(--text-muted); font-family:var(--font-mono); font-size:0.7rem; font-weight:600; text-transform:uppercase; letter-spacing:0.06em;">
+                Question
+              </th>
+              <th style="text-align:left; padding:0.6rem 0.75rem; color:var(--text-muted); font-family:var(--font-mono); font-size:0.7rem; font-weight:600; text-transform:uppercase; letter-spacing:0.06em;">
+                Status
+              </th>
+              <th style="text-align:left; padding:0.6rem 0.75rem; color:var(--text-muted); font-family:var(--font-mono); font-size:0.7rem; font-weight:600; text-transform:uppercase; letter-spacing:0.06em;">
+                Evidence
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            
+            <tr style="border-bottom:1px solid var(--border-soft);">
+              <td class="matrix-q" style="padding:0.55rem 0.75rem; font-weight:500; color:var(--text);">What does this company do?</td>
+              <td style="padding:0.55rem 0.75rem;">
+                <span class="badge badge-success
+                  ">
+                  YES
+                </span>
+              </td>
+              <td class="muted" style="padding:0.55rem 0.75rem; font-size:0.85rem;">Heuristic: page has substantive text content.</td>
+            </tr>
+            
+            <tr style="border-bottom:1px solid var(--border-soft);">
+              <td class="matrix-q" style="padding:0.55rem 0.75rem; font-weight:500; color:var(--text);">Who is it for?</td>
+              <td style="padding:0.55rem 0.75rem;">
+                <span class="badge badge-danger">
+                  NO
+                </span>
+              </td>
+              <td class="muted" style="padding:0.55rem 0.75rem; font-size:0.85rem;">No clear evidence found in page text.</td>
+            </tr>
+            
+            <tr style="border-bottom:1px solid var(--border-soft);">
+              <td class="matrix-q" style="padding:0.55rem 0.75rem; font-weight:500; color:var(--text);">What problem does it solve?</td>
+              <td style="padding:0.55rem 0.75rem;">
+                <span class="badge badge-success
+                  ">
+                  YES
+                </span>
+              </td>
+              <td class="muted" style="padding:0.55rem 0.75rem; font-size:0.85rem;">Heuristic: found problem-framing language.</td>
+            </tr>
+            
+            <tr style="border-bottom:1px solid var(--border-soft);">
+              <td class="matrix-q" style="padding:0.55rem 0.75rem; font-weight:500; color:var(--text);">What measurable result does it provide?</td>
+              <td style="padding:0.55rem 0.75rem;">
+                <span class="badge badge-success
+                  ">
+                  YES
+                </span>
+              </td>
+              <td class="muted" style="padding:0.55rem 0.75rem; font-size:0.85rem;">Heuristic: found outcome/metric language.</td>
+            </tr>
+            
+            <tr style="border-bottom:1px solid var(--border-soft);">
+              <td class="matrix-q" style="padding:0.55rem 0.75rem; font-weight:500; color:var(--text);">Why choose it over alternatives?</td>
+              <td style="padding:0.55rem 0.75rem;">
+                <span class="badge badge-danger">
+                  NO
+                </span>
+              </td>
+              <td class="muted" style="padding:0.55rem 0.75rem; font-size:0.85rem;">No comparative language (e.g. &#39;unlike&#39;, &#39;vs.&#39;, &#39;why choose us&#39;) found.</td>
+            </tr>
+            
+          </tbody>
+        </table>
+      </div>
+    </section>
+    
+
+    <!-- ===== Priority Roadmap ===== -->
+    <section class="reveal" style="margin-bottom:2.5rem;">
+      <h2>Priority roadmap</h2>
+      <p class="muted" style="margin-bottom:1.25rem; font-size:0.9rem;">
+        Sorted by impact vs. effort — fix top of list first.
+      </p>
+
+      <div class="roadmap">
+        
+        
+          
+          
+          <div class="roadmap-item">
+            <div class="roadmap-dot critical">1</div>
+            <div class="roadmap-content">
+              <div class="roadmap-item-header">
+                <div style="display:flex; align-items:center; gap:0.6rem;">
+                  <span class="badge badge-danger
+                    " style="font-size:0.62rem;">
+                    CRITICAL
+                  </span>
+                  <h3 class="roadmap-item-title">No Organization or Product JSON-LD found</h3>
+                </div>
+                <div class="finding-meta">
+                  Impact: high · Effort: low
+                </div>
+              </div>
+              <p class="muted" style="font-size:0.85rem; margin-bottom:0.5rem;"><span style="color:var(--text);">Why it matters:</span> AI systems rely on structured data (JSON-LD) to build entity confidence about who you are. Without it, the model has to infer everything from unstructured prose, which is far less reliable for citation.</p>
+
+              <details>
+                <summary>Evidence</summary>
+                <div class="evidence">No JSON-LD block with an Organization, Product, or SoftwareApplication type was found.</div>
+              </details>
+
+              <p class="muted" style="font-size:0.85rem; margin:0.4rem 0;"><span style="color:var(--text);">Recommendation:</span> Add an Organization JSON-LD block to your homepage &lt;head&gt;.</p>
+
+              
+              <div class="code-block-wrapper">
+                <pre class="code-block"><code>&lt;script type=&#34;application/ld+json&#34;&gt;
+{
+  &#34;@context&#34;: &#34;https://schema.org&#34;,
+  &#34;@type&#34;: &#34;Organization&#34;,
+  &#34;name&#34;: &#34;Your Company Name&#34;,
+  &#34;url&#34;: &#34;https://yourdomain.com&#34;,
+  &#34;logo&#34;: &#34;https://yourdomain.com/logo.png&#34;,
+  &#34;description&#34;: &#34;One sentence describing what you do and for whom.&#34;,
+  &#34;sameAs&#34;: [
+    &#34;https://www.linkedin.com/company/yourcompany&#34;,
+    &#34;https://x.com/yourcompany&#34;
+  ]
+}
+&lt;/script&gt;</code></pre>
+                <button class="copy-btn no-print" onclick="copyToClipboard(this)">Copy</button>
+              </div>
+              
+            </div>
+          </div>
+          
+        
+          
+          
+          <div class="roadmap-item">
+            <div class="roadmap-dot warning">1</div>
+            <div class="roadmap-content">
+              <div class="roadmap-item-header">
+                <div style="display:flex; align-items:center; gap:0.6rem;">
+                  <span class="badge badge-warning
+                    " style="font-size:0.62rem;">
+                    WARNING
+                  </span>
+                  <h3 class="roadmap-item-title">No strong citation-ready snippet found</h3>
+                </div>
+                <div class="finding-meta">
+                  Impact: high · Effort: low
+                </div>
+              </div>
+              <p class="muted" style="font-size:0.85rem; margin-bottom:0.5rem;"><span style="color:var(--text);">Why it matters:</span> AI answer engines often quote a single self-contained paragraph verbatim. Without one, they must stitch together a summary themselves — or skip citing you.</p>
+
+              <details>
+                <summary>Evidence</summary>
+                <div class="evidence">Candidate: &#34;Introducing Harvey Academy: on-demand training, expert workflows, and step-by-step guidance to help legal teams get the most out of Harvey.&#34; — Heuristic: paragraph is well-sized but lacks a measurable benefit or number.</div>
+              </details>
+
+              <p class="muted" style="font-size:0.85rem; margin:0.4rem 0;"><span style="color:var(--text);">Recommendation:</span> Add one 20-60 word paragraph near the top of the page that names your company, states your product category, and states a measurable outcome.</p>
+
+              
+              <div class="code-block-wrapper">
+                <pre class="code-block"><code>[Company] is a [category] that helps [audience] [achieve outcome], reducing/increasing [metric] by [X%].</code></pre>
+                <button class="copy-btn no-print" onclick="copyToClipboard(this)">Copy</button>
+              </div>
+              
+            </div>
+          </div>
+          
+        
+          
+          
+          <div class="roadmap-item">
+            <div class="roadmap-dot critical">1</div>
+            <div class="roadmap-content">
+              <div class="roadmap-item-header">
+                <div style="display:flex; align-items:center; gap:0.6rem;">
+                  <span class="badge badge-danger
+                    " style="font-size:0.62rem;">
+                    CRITICAL
+                  </span>
+                  <h3 class="roadmap-item-title">No sameAs links (no JSON-LD entity to check)</h3>
+                </div>
+                <div class="finding-meta">
+                  Impact: medium · Effort: low
+                </div>
+              </div>
+              <p class="muted" style="font-size:0.85rem; margin-bottom:0.5rem;"><span style="color:var(--text);">Why it matters:</span> sameAs links let AI systems cross-reference your entity against trusted knowledge graphs.</p>
+
+              <details>
+                <summary>Evidence</summary>
+                <div class="evidence">No Organization entity exists to hold a sameAs array.</div>
+              </details>
+
+              <p class="muted" style="font-size:0.85rem; margin:0.4rem 0;"><span style="color:var(--text);">Recommendation:</span> Add the Organization JSON-LD above, including a sameAs array.</p>
+
+              
+            </div>
+          </div>
+          
+        
+          
+          
+          <div class="roadmap-item">
+            <div class="roadmap-dot warning">1</div>
+            <div class="roadmap-content">
+              <div class="roadmap-item-header">
+                <div style="display:flex; align-items:center; gap:0.6rem;">
+                  <span class="badge badge-warning
+                    " style="font-size:0.62rem;">
+                    WARNING
+                  </span>
+                  <h3 class="roadmap-item-title">Organization schema is missing: name, logo, description</h3>
+                </div>
+                <div class="finding-meta">
+                  Impact: medium · Effort: low
+                </div>
+              </div>
+              <p class="muted" style="font-size:0.85rem; margin-bottom:0.5rem;"><span style="color:var(--text);">Why it matters:</span> AI systems use name/logo/description as baseline entity confidence signals before deciding whether to cite a source.</p>
+
+              <details>
+                <summary>Evidence</summary>
+                <div class="evidence">Present fields: none. Missing: [&#39;name&#39;, &#39;logo&#39;, &#39;description&#39;].</div>
+              </details>
+
+              <p class="muted" style="font-size:0.85rem; margin:0.4rem 0;"><span style="color:var(--text);">Recommendation:</span> Ensure your Organization JSON-LD includes name, logo, and description fields.</p>
+
+              
+            </div>
+          </div>
+          
+        
+          
+          
+          <div class="roadmap-item">
+            <div class="roadmap-dot warning">1</div>
+            <div class="roadmap-content">
+              <div class="roadmap-item-header">
+                <div style="display:flex; align-items:center; gap:0.6rem;">
+                  <span class="badge badge-warning
+                    " style="font-size:0.62rem;">
+                    WARNING
+                  </span>
+                  <h3 class="roadmap-item-title">No question-style H2/H3 headings found</h3>
+                </div>
+                <div class="finding-meta">
+                  Impact: high · Effort: medium
+                </div>
+              </div>
+              <p class="muted" style="font-size:0.85rem; margin-bottom:0.5rem;"><span style="color:var(--text);">Why it matters:</span> AI answer engines match user questions against headings. Question-phrased headings (&#39;What is X?&#39;, &#39;How does X work?&#39;) are directly extractable as answers.</p>
+
+              <details>
+                <summary>Evidence</summary>
+                <div class="evidence">Checked 42 H2/H3 headings; none were phrased as questions.</div>
+              </details>
+
+              <p class="muted" style="font-size:0.85rem; margin:0.4rem 0;"><span style="color:var(--text);">Recommendation:</span> Rewrite key section headings as direct questions your customers actually ask.</p>
+
+              
+              <div class="code-block-wrapper">
+                <pre class="code-block"><code>&lt;h2&gt;What is [Your Product]?&lt;/h2&gt;
+&lt;p&gt;[Your Product] is a ... that helps [audience] ... by ....&lt;/p&gt;</code></pre>
+                <button class="copy-btn no-print" onclick="copyToClipboard(this)">Copy</button>
+              </div>
+              
+            </div>
+          </div>
+          
+        
+          
+        
+          
+          
+          <div class="roadmap-item">
+            <div class="roadmap-dot warning">1</div>
+            <div class="roadmap-content">
+              <div class="roadmap-item-header">
+                <div style="display:flex; align-items:center; gap:0.6rem;">
+                  <span class="badge badge-warning
+                    " style="font-size:0.62rem;">
+                    WARNING
+                  </span>
+                  <h3 class="roadmap-item-title">Who it is for: not clearly answered</h3>
+                </div>
+                <div class="finding-meta">
+                  Impact: high · Effort: medium
+                </div>
+              </div>
+              <p class="muted" style="font-size:0.85rem; margin-bottom:0.5rem;"><span style="color:var(--text);">Why it matters:</span> AI systems assemble answers from pages that clearly cover these four fundamentals. Missing any one makes the page a weaker citation candidate.</p>
+
+              <details>
+                <summary>Evidence</summary>
+                <div class="evidence">No clear evidence found in page text.</div>
+              </details>
+
+              <p class="muted" style="font-size:0.85rem; margin:0.4rem 0;"><span style="color:var(--text);">Recommendation:</span> Add a clear, explicit statement covering: who it is for.</p>
+
+              
+            </div>
+          </div>
+          
+        
+          
+        
+          
+        
+          
+          
+          <div class="roadmap-item">
+            <div class="roadmap-dot warning">1</div>
+            <div class="roadmap-content">
+              <div class="roadmap-item-header">
+                <div style="display:flex; align-items:center; gap:0.6rem;">
+                  <span class="badge badge-warning
+                    " style="font-size:0.62rem;">
+                    WARNING
+                  </span>
+                  <h3 class="roadmap-item-title">No &lt;table&gt; elements found</h3>
+                </div>
+                <div class="finding-meta">
+                  Impact: medium · Effort: medium
+                </div>
+              </div>
+              <p class="muted" style="font-size:0.85rem; margin-bottom:0.5rem;"><span style="color:var(--text);">Why it matters:</span> Tables are highly extractable structured facts AI systems can quote directly (pricing, comparisons, specs).</p>
+
+              <details>
+                <summary>Evidence</summary>
+                <div class="evidence">Found 0 &lt;table&gt; tag(s) in the DOM.</div>
+              </details>
+
+              <p class="muted" style="font-size:0.85rem; margin:0.4rem 0;"><span style="color:var(--text);">Recommendation:</span> Present comparable data (pricing tiers, feature comparisons, specs) in an HTML &lt;table&gt;.</p>
+
+              
+              <div class="code-block-wrapper">
+                <pre class="code-block"><code>&lt;table&gt;
+  &lt;tr&gt;&lt;th&gt;Plan&lt;/th&gt;&lt;th&gt;Price&lt;/th&gt;&lt;th&gt;Key Feature&lt;/th&gt;&lt;/tr&gt;
+  &lt;tr&gt;&lt;td&gt;Starter&lt;/td&gt;&lt;td&gt;$0&lt;/td&gt;&lt;td&gt;...&lt;/td&gt;&lt;/tr&gt;
+&lt;/table&gt;</code></pre>
+                <button class="copy-btn no-print" onclick="copyToClipboard(this)">Copy</button>
+              </div>
+              
+            </div>
+          </div>
+          
+        
+          
+        
+          
+          
+          <div class="roadmap-item">
+            <div class="roadmap-dot warning">1</div>
+            <div class="roadmap-content">
+              <div class="roadmap-item-header">
+                <div style="display:flex; align-items:center; gap:0.6rem;">
+                  <span class="badge badge-warning
+                    " style="font-size:0.62rem;">
+                    WARNING
+                  </span>
+                  <h3 class="roadmap-item-title">Page is image-heavy — key info may be trapped in graphics</h3>
+                </div>
+                <div class="finding-meta">
+                  Impact: medium · Effort: medium
+                </div>
+              </div>
+              <p class="muted" style="font-size:0.85rem; margin-bottom:0.5rem;"><span style="color:var(--text);">Why it matters:</span> AI crawlers read text, not images. Information locked inside graphics (infographics, pricing screenshots) is invisible to AI answer systems.</p>
+
+              <details>
+                <summary>Evidence</summary>
+                <div class="evidence">1339 words across 72 &lt;img&gt; tags (ratio 18.6:1).</div>
+              </details>
+
+              <p class="muted" style="font-size:0.85rem; margin:0.4rem 0;"><span style="color:var(--text);">Recommendation:</span> Ensure any information conveyed only in images (pricing, stats, feature lists) also exists as real text.</p>
+
+              
+            </div>
+          </div>
+          
+        
+          
+        
+          
+        
+          
+        
+          
+        
+          
+        
+          
+        
+          
+        
+          
+        
+          
+        
+
+        
+        <div class="empty-state">
+          <div class="empty-icon">✓</div>
+          <p class="muted">No critical or warning findings. Your site is well-optimized for AI search.</p>
+        </div>
+        
+      </div>
+    </section>
+
+    <!-- ===== Passing Checks ===== -->
+    
+    
+    <section class="reveal" style="margin-bottom:2.5rem;">
+      <h2>Passing checks (13)</h2>
+      <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:0.75rem;">
+        
+        <div class="finding pass" style="padding:0.75rem;">
+          <div style="display:flex; align-items:flex-start; gap:0.6rem;">
+            <span style="color:var(--success); font-size:1.1rem; margin-top:0.1rem;">✓</span>
+            <div>
+              <p style="color:var(--text); font-size:0.9rem; margin-bottom:0.2rem;">Found a well-sized lead paragraph (20-50 words) following a heading</p>
+              <div class="muted" style="font-family:var(--font-mono); font-size:0.75rem;">
+                5.0/5.0 pts
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="finding pass" style="padding:0.75rem;">
+          <div style="display:flex; align-items:flex-start; gap:0.6rem;">
+            <span style="color:var(--success); font-size:1.1rem; margin-top:0.1rem;">✓</span>
+            <div>
+              <p style="color:var(--text); font-size:0.9rem; margin-bottom:0.2rem;">Trust pages found: About, Contact</p>
+              <div class="muted" style="font-family:var(--font-mono); font-size:0.75rem;">
+                5.0/5.0 pts
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="finding pass" style="padding:0.75rem;">
+          <div style="display:flex; align-items:flex-start; gap:0.6rem;">
+            <span style="color:var(--success); font-size:1.1rem; margin-top:0.1rem;">✓</span>
+            <div>
+              <p style="color:var(--text); font-size:0.9rem; margin-bottom:0.2rem;">No generic marketing fluff detected</p>
+              <div class="muted" style="font-family:var(--font-mono); font-size:0.75rem;">
+                5.0/5.0 pts
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="finding pass" style="padding:0.75rem;">
+          <div style="display:flex; align-items:flex-start; gap:0.6rem;">
+            <span style="color:var(--success); font-size:1.1rem; margin-top:0.1rem;">✓</span>
+            <div>
+              <p style="color:var(--text); font-size:0.9rem; margin-bottom:0.2rem;">Numeric density: 5.6/500 words, 14 list(s) found</p>
+              <div class="muted" style="font-family:var(--font-mono); font-size:0.75rem;">
+                5.0/5.0 pts
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="finding pass" style="padding:0.75rem;">
+          <div style="display:flex; align-items:flex-start; gap:0.6rem;">
+            <span style="color:var(--success); font-size:1.1rem; margin-top:0.1rem;">✓</span>
+            <div>
+              <p style="color:var(--text); font-size:0.9rem; margin-bottom:0.2rem;">OAI-SearchBot is allowed to crawl</p>
+              <div class="muted" style="font-family:var(--font-mono); font-size:0.75rem;">
+                5.0/5.0 pts
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="finding pass" style="padding:0.75rem;">
+          <div style="display:flex; align-items:flex-start; gap:0.6rem;">
+            <span style="color:var(--success); font-size:1.1rem; margin-top:0.1rem;">✓</span>
+            <div>
+              <p style="color:var(--text); font-size:0.9rem; margin-bottom:0.2rem;">PerplexityBot is allowed to crawl</p>
+              <div class="muted" style="font-family:var(--font-mono); font-size:0.75rem;">
+                5.0/5.0 pts
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="finding pass" style="padding:0.75rem;">
+          <div style="display:flex; align-items:flex-start; gap:0.6rem;">
+            <span style="color:var(--success); font-size:1.1rem; margin-top:0.1rem;">✓</span>
+            <div>
+              <p style="color:var(--text); font-size:0.9rem; margin-bottom:0.2rem;">ClaudeBot is allowed to crawl</p>
+              <div class="muted" style="font-family:var(--font-mono); font-size:0.75rem;">
+                3.0/3.0 pts
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="finding pass" style="padding:0.75rem;">
+          <div style="display:flex; align-items:flex-start; gap:0.6rem;">
+            <span style="color:var(--success); font-size:1.1rem; margin-top:0.1rem;">✓</span>
+            <div>
+              <p style="color:var(--text); font-size:0.9rem; margin-bottom:0.2rem;">Googlebot is allowed to crawl</p>
+              <div class="muted" style="font-family:var(--font-mono); font-size:0.75rem;">
+                2.0/2.0 pts
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="finding pass" style="padding:0.75rem;">
+          <div style="display:flex; align-items:flex-start; gap:0.6rem;">
+            <span style="color:var(--success); font-size:1.1rem; margin-top:0.1rem;">✓</span>
+            <div>
+              <p style="color:var(--text); font-size:0.9rem; margin-bottom:0.2rem;">Most recent freshness signal is 1 day old</p>
+              <div class="muted" style="font-family:var(--font-mono); font-size:0.75rem;">
+                5.0/5.0 pts
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="finding pass" style="padding:0.75rem;">
+          <div style="display:flex; align-items:flex-start; gap:0.6rem;">
+            <span style="color:var(--success); font-size:1.1rem; margin-top:0.1rem;">✓</span>
+            <div>
+              <p style="color:var(--text); font-size:0.9rem; margin-bottom:0.2rem;">Raw HTML contains sufficient text for AI crawlers</p>
+              <div class="muted" style="font-family:var(--font-mono); font-size:0.75rem;">
+                5.0/5.0 pts
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="finding pass" style="padding:0.75rem;">
+          <div style="display:flex; align-items:flex-start; gap:0.6rem;">
+            <span style="color:var(--success); font-size:1.1rem; margin-top:0.1rem;">✓</span>
+            <div>
+              <p style="color:var(--text); font-size:0.9rem; margin-bottom:0.2rem;">What the product/service is: answered</p>
+              <div class="muted" style="font-family:var(--font-mono); font-size:0.75rem;">
+                3.8/3.8 pts
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="finding pass" style="padding:0.75rem;">
+          <div style="display:flex; align-items:flex-start; gap:0.6rem;">
+            <span style="color:var(--success); font-size:1.1rem; margin-top:0.1rem;">✓</span>
+            <div>
+              <p style="color:var(--text); font-size:0.9rem; margin-bottom:0.2rem;">What problem it solves: answered</p>
+              <div class="muted" style="font-family:var(--font-mono); font-size:0.75rem;">
+                3.8/3.8 pts
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="finding pass" style="padding:0.75rem;">
+          <div style="display:flex; align-items:flex-start; gap:0.6rem;">
+            <span style="color:var(--success); font-size:1.1rem; margin-top:0.1rem;">✓</span>
+            <div>
+              <p style="color:var(--text); font-size:0.9rem; margin-bottom:0.2rem;">What measurable outcome it delivers: answered</p>
+              <div class="muted" style="font-family:var(--font-mono); font-size:0.75rem;">
+                3.8/3.8 pts
+              </div>
+            </div>
+          </div>
+        </div>
+        
+      </div>
+    </section>
+    
+
+    <!-- ===== Fetch Diagnostics ===== -->
+    
+    <section class="reveal" style="margin-bottom:2.5rem;">
+      <h2>Fetch diagnostics</h2>
+      <div class="stats-row" style="margin-top:0;">
+        <div class="stat-item">
+          <div class="stat-value" style="font-size:1.25rem;">200</div>
+          <div class="stat-label">HTTP Status</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-value">268 ms</div>
+          <div class="stat-label">Fetch Time</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-value">268 ms</div>
+          <div class="stat-label">TTFB</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-value">0</div>
+          <div class="stat-label">Redirects</div>
+        </div>
+      </div>
+    </section>
+    
+
+  </main>
+  
+
+  <!-- ===== Footer ===== -->
+  <footer class="site-footer">
+    <div class="container footer-inner">
+      <span class="footer-logo">
+        <span class="logo-mark">G</span> GEO Auditor
+      </span>
+      <span class="muted" style="font-size:0.82rem;">
+        Technical audits for AI search readiness.
+      </span>
+    </div>
+    <div class="footer-bottom">
+      <a href="https://buymeacoffee.com/mandarmawale" target="_blank" rel="noopener" class="support-link">Support this project ↗</a>
+    </div>
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
