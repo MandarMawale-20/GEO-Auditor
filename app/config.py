@@ -1,10 +1,8 @@
-"""
-Central configuration for GEO Auditor.
+"""Central configuration: settings, scoring weights, and shared constants.
 
-Holds environment-driven settings, HTTP client defaults, and the FROZEN
-100-point scoring model. The scoring weights below are the single source
-of truth — engines, scoring.py, and the report renderer all read from here
-so the numbers can never drift out of sync.
+`SCORE_WEIGHTS` is the single source of truth — engines, scoring.py, and the
+report renderer all read from here. The startup-time assertion guarantees
+the model always sums to exactly 100.
 """
 from __future__ import annotations
 
@@ -15,19 +13,11 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-
-# --------------------------------------------------------------------------
-# Frozen 100-point scoring model
-# --------------------------------------------------------------------------
-# NOTE: The original PRD table summed to 110. This is the rebalanced model
-# that sums to exactly 100. Category names and grouping are unchanged.
-# Query Coverage and Structured Entity Data were rebalanced to better
-# reflect real-world GEO behavior on established sites: increasing the
-# weight of query coverage (content answerability) and reducing the weight
-# of structured entity data, which established brands may lack on-page
-# while still performing well via off-page authority signals.
-# See README "Scoring Methodology" for rationale.
-
+# Frozen 100-point scoring model. The original PRD table summed to 110; this
+# rebalances Structured Entity Data (15 -> 10) and Query Coverage (10 -> 15)
+# so established brands aren't over-penalized for missing on-page schema and
+# content answerability is weighted more heavily. See README "Scoring
+# Methodology" for the rationale.
 SCORE_WEIGHTS: dict[str, int] = {
     "ai_crawler_accessibility": 15,
     "structured_entity_data": 10,
@@ -47,8 +37,6 @@ if TOTAL_POSSIBLE_SCORE != 100:
         f"Scoring model must sum to exactly 100 points, got {TOTAL_POSSIBLE_SCORE}"
     )
 
-# Human-readable labels + which engine owns each category, for report
-# rendering and orchestration bookkeeping.
 CATEGORY_META: dict[str, dict[str, str]] = {
     "ai_crawler_accessibility": {
         "label": "AI Crawler Accessibility",
@@ -102,17 +90,15 @@ CATEGORY_META: dict[str, dict[str, str]] = {
     },
 }
 
-
-# --------------------------------------------------------------------------
-# AI crawler user-agents checked against robots.txt
-# --------------------------------------------------------------------------
+# AI bots we score against robots.txt. Higher weights = more impactful bots.
 AI_CRAWLER_POINTS: dict[str, int] = {
     "OAI-SearchBot": 5,
     "PerplexityBot": 5,
     "ClaudeBot": 3,
     "Googlebot": 2,
 }
-# Claude-Web is treated as an alias of ClaudeBot for scoring purposes.
+
+# Claude-Web is treated as ClaudeBot for scoring purposes.
 CRAWLER_ALIASES: dict[str, str] = {
     "Claude-Web": "ClaudeBot",
 }
@@ -134,30 +120,21 @@ SPA_MARKERS: tuple[str, ...] = (
     "__nuxt__",
 )
 
-
-# --------------------------------------------------------------------------
-# Scoring thresholds (centralized — engines must not hardcode these values)
-# --------------------------------------------------------------------------
-# Quote Readiness / Citation Snippet Quality
+# Scoring thresholds — engines must not hardcode these values.
 CITATION_MIN_WORDS: int = 20
 CITATION_MAX_WORDS: int = 50
 
-# JS Rendering Risk
 SUFFICIENT_TEXT_WORDS: int = 150
 LIMITED_TEXT_WORDS: int = 50
 
-# Fact Density
 MIN_NUMERIC_DENSITY: int = 3  # numeric tokens per 500 words for full points
 
-# Media-to-Text Balance
 MEDIA_RATIO_HEALTHY: int = 50  # words per image — healthy
 MEDIA_RATIO_CRITICAL: int = 20  # words per image — critical threshold
 
 
 @dataclass(frozen=True)
 class Settings:
-    """Runtime settings loaded from environment variables (.env supported)."""
-
     groq_api_key: str | None = field(
         default_factory=lambda: os.getenv("GROQ_API_KEY") or None
     )
@@ -165,9 +142,7 @@ class Settings:
         default_factory=lambda: os.getenv("GROQ_MODEL", "qwen/qwen3.8-27b")
     )
     groq_base_url: str = field(
-        default_factory=lambda: os.getenv(
-            "GROQ_BASE_URL", "https://api.groq.com/openai/v1"
-        )
+        default_factory=lambda: os.getenv("GROQ_BASE_URL", "https://api.groq.com/openai/v1")
     )
     request_timeout_seconds: float = field(
         default_factory=lambda: float(os.getenv("REQUEST_TIMEOUT_SECONDS", "8.0"))
@@ -196,6 +171,3 @@ DEFAULT_HEADERS: dict[str, str] = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     "Accept-Language": "en-US,en;q=0.5",
 }
-
-
-

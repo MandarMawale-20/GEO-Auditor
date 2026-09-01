@@ -1,5 +1,4 @@
-"""
-PDF report generator using ReportLab Platypus.
+"""PDF report generator using ReportLab Platypus.
 
 Produces a text-first, print-quality A4 report: title, URL, score & grade,
 executive summary, score table, top priorities, detailed findings,
@@ -10,47 +9,42 @@ No HTML, CSS, progress bars, or decorative UI elements are rendered.
 from __future__ import annotations
 
 import io
-
-from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
-from reportlab.lib.units import inch
-from reportlab.lib.enums import TA_LEFT, TA_CENTER
-from reportlab.platypus import (
-    SimpleDocTemplate,
-    Paragraph,
-    Spacer,
-    Table,
-    TableStyle,
-    PageBreak,
-    KeepTogether,
-    Preformatted,
-)
-
-from app.models import AuditReport
 import logging
 from xml.sax.saxutils import escape as xml_escape
 
+from reportlab.lib import colors
+from reportlab.lib.enums import TA_CENTER, TA_LEFT
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.units import inch
+from reportlab.platypus import (
+    KeepTogether,
+    PageBreak,
+    Paragraph,
+    Preformatted,
+    SimpleDocTemplate,
+    Spacer,
+    Table,
+    TableStyle,
+)
+
+from app.models import AuditReport
+
 logger = logging.getLogger("geo_auditor.pdf")
 
-# ---------------------------------------------------------------------------
-# Layout constants
-# ---------------------------------------------------------------------------
 _PAGE_WIDTH, _PAGE_HEIGHT = A4
 _MARGIN = inch  # 1-inch margins on all sides
-
 _HEADER_TEXT = "GEO Auditor"
 
 
 def _build_styles():
     """Create a fresh copy of ReportLab styles per PDF generation.
 
-    Avoids mutating the global getSampleStyleSheet() at import time, which
-    would side-affect any other code relying on the default styles.
+    Avoids mutating the global :func:`getSampleStyleSheet` at import time,
+    which would side-affect any other code relying on the default styles.
     """
     styles = getSampleStyleSheet()
 
-    # Override built-in styles.
     styles["Title"].fontSize = 24
     styles["Title"].leading = 28
     styles["Title"].spaceAfter = 6
@@ -75,7 +69,6 @@ def _build_styles():
     styles["Normal"].textColor = colors.black
     styles["Normal"].alignment = TA_LEFT
 
-    # Add new styles with unique names.
     styles.add(
         ParagraphStyle(
             name="SectionHeading",
@@ -124,11 +117,8 @@ def _build_styles():
 _styles = _build_styles()
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 def _escape_xml(text: str) -> str:
-    """Escape characters that are special in reportlab's Paragraph XML markup."""
+    """Escape characters that are special in ReportLab's Paragraph XML markup."""
     return xml_escape(str(text))
 
 
@@ -136,23 +126,22 @@ def _wrap_url(url: str) -> str:
     """Escape a URL for use inside a Paragraph.
 
     ReportLab's Paragraph wraps text naturally at ``/`` and ``.`` characters,
-    so no special break tags are needed — we just escape XML metacharacters.
+    so no special break tags are needed — XML metacharacters are escaped.
     """
-    escaped = _escape_xml(url)
-    return escaped
+    return _escape_xml(url)
 
 
 def _table_text(text: str) -> str:
     """Prepare plain text for a ReportLab Table cell.
 
-    Table cells render as plain text (not XML), so we must NOT escape entities.
-    Instead we strip any markup characters that ReportLab might interpret.
+    Table cells render as plain text (not XML), so we don't escape entities;
+    instead we strip newlines so multi-line strings fit on a single row.
     """
     return str(text).replace("\n", " ").replace("\r", "")
 
 
-def _append_finding(story: list, finding, numbered: int, include_points: bool = False):
-    """Append a single finding as a KeepTogether block to the story."""
+def _append_finding(story: list, finding, numbered: int, include_points: bool = False) -> None:
+    """Append a single finding as a KeepTogether block to *story*."""
     blocks: list = []
 
     sev_label = finding.severity.value.upper()
@@ -162,22 +151,18 @@ def _append_finding(story: list, finding, numbered: int, include_points: bool = 
             _styles["BodyText"],
         )
     )
-
     blocks.append(
         Paragraph(f"<b>Category:</b> {_escape_xml(finding.category)}", _styles["SmallText"])
     )
-
     blocks.append(
         Paragraph(
             f"<b>Why it matters:</b> {_escape_xml(finding.why_it_matters)}",
             _styles["BodyText"],
         )
     )
-
     blocks.append(
         Paragraph(f"<b>Evidence:</b> {_escape_xml(finding.evidence)}", _styles["BodyText"])
     )
-
     blocks.append(
         Paragraph(
             f"<b>Impact:</b> {finding.impact.value}  |  "
@@ -210,17 +195,16 @@ def _append_finding(story: list, finding, numbered: int, include_points: bool = 
     story.append(KeepTogether(blocks))
 
 
-# ---------------------------------------------------------------------------
-# Page callback
-# ---------------------------------------------------------------------------
-def _make_page_canvas(canvas, doc):
+def _make_page_canvas(canvas, doc) -> None:
     """Draw header and footer on every page."""
     canvas.saveState()
+
     # Header
     canvas.setFont("Helvetica", 8)
     canvas.setFillColor(colors.HexColor("#888888"))
     canvas.drawString(_MARGIN, _PAGE_HEIGHT - _MARGIN + 6, _HEADER_TEXT)
-    # Footer — page number (right) + timestamp (center)
+
+    # Footer: page number (right) + timestamp (center)
     canvas.setFont("Helvetica", 8)
     canvas.setFillColor(colors.HexColor("#888888"))
     canvas.drawRightString(
@@ -236,21 +220,18 @@ def _make_page_canvas(canvas, doc):
     canvas.restoreState()
 
 
-# ---------------------------------------------------------------------------
-# Story builder
-# ---------------------------------------------------------------------------
 def _build_story(report: AuditReport) -> list:
     """Build the list of flowables for the PDF body."""
     story: list = []
 
     display_url = report.final_url or report.url
 
-    # ---- Title / URL -------------------------------------------------------
+    # Title and URL
     story.append(Paragraph("GEO Audit Report", _styles["Title"]))
     story.append(Paragraph(_wrap_url(display_url), _styles["Subtitle"]))
     story.append(Spacer(1, 12))
 
-    # ---- Executive Summary ------------------------------------------------
+    # Executive Summary
     story.append(Paragraph("Executive Summary", _styles["SectionHeading"]))
     summary_parts = [
         f"<b>Overall Score:</b> {report.total_score} / {report.max_score}",
@@ -262,15 +243,14 @@ def _build_story(report: AuditReport) -> list:
     if report.llm_enhanced:
         summary_parts.append("<b>Scoring Mode:</b> Groq-enhanced")
     elif report.llm_error:
-        summary_parts.append(f"<b>Scoring Mode:</b> Deterministic fallback")
+        summary_parts.append("<b>Scoring Mode:</b> Deterministic fallback")
     else:
         summary_parts.append("<b>Scoring Mode:</b> Deterministic")
     for part in summary_parts:
         story.append(Paragraph(part, _styles["BodyText"]))
-
     story.append(Spacer(1, 8))
 
-    # ---- Calibration note -------------------------------------------------
+    # Calibration note
     story.append(
         Paragraph(
             (
@@ -284,11 +264,9 @@ def _build_story(report: AuditReport) -> list:
     )
     story.append(Spacer(1, 8))
 
-    # ---- Score Breakdown Table ------------------------------------------
+    # Score Breakdown Table
     story.append(Paragraph("Score Breakdown", _styles["SectionHeading"]))
-    table_data = [
-        ["Category", "Group", "Score", "%"],
-    ]
+    table_data = [["Category", "Group", "Score", "%"]]
     for section in report.sections:
         table_data.append(
             [
@@ -323,17 +301,16 @@ def _build_story(report: AuditReport) -> list:
     story.append(score_table)
     story.append(Spacer(1, 10))
 
-    # ---- Top Priorities ----------------------------------------------------
+    # Top Priorities
     story.append(Paragraph("Top Priorities", _styles["SectionHeading"]))
     if report.top_priorities:
         for i, finding in enumerate(report.top_priorities, 1):
             _append_finding(story, finding, numbered=i)
     else:
         story.append(Paragraph("No priority findings identified.", _styles["BodyText"]))
-
     story.append(Spacer(1, 8))
 
-    # ---- Detailed Findings ----------------------------------------------
+    # Detailed Findings
     story.append(Paragraph("Detailed Findings", _styles["SectionHeading"]))
     if report.all_findings:
         for i, finding in enumerate(report.all_findings, 1):
@@ -341,7 +318,7 @@ def _build_story(report: AuditReport) -> list:
     else:
         story.append(Paragraph("No detailed findings.", _styles["BodyText"]))
 
-    # ---- AI Answerability Matrix (if present) ---------------------------
+    # AI Answerability Matrix (if present)
     if report.answerability_matrix:
         story.append(PageBreak())
         story.append(Paragraph("AI Answerability Matrix", _styles["SectionHeading"]))
@@ -374,10 +351,9 @@ def _build_story(report: AuditReport) -> list:
             )
         )
         story.append(matrix_table)
-
     story.append(Spacer(1, 8))
 
-    # ---- Recommendations Recap -----------------------------------------
+    # Recommendations Recap
     story.append(Paragraph("Recommendations Recap", _styles["SectionHeading"]))
     seen_recs: set[str] = set()
     for finding in report.all_findings:
@@ -395,12 +371,12 @@ def _build_story(report: AuditReport) -> list:
     return story
 
 
-# ---------------------------------------------------------------------------
-# Public API
-# ---------------------------------------------------------------------------
 def generate_pdf_bytes(report: AuditReport) -> bytes:
-    """Render an AuditReport into a PDF document and return the raw bytes."""
-    logger.info("Generating PDF for url=%s report_id=%s", report.url, getattr(report, "report_id", None))
+    """Render an *AuditReport* into a PDF document and return the raw bytes."""
+    logger.info(
+        "Generating PDF for url=%s report_id=%s",
+        report.url, getattr(report, "report_id", None),
+    )
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         buffer,
@@ -412,8 +388,6 @@ def generate_pdf_bytes(report: AuditReport) -> bytes:
         title=f"GEO Audit Report — {report.final_url or report.url}",
         author="GEO Auditor",
     )
-
-    # Stash the timestamp on the doc so the page canvas hook can render it.
     doc._geo_report_ts = report.generated_at
 
     story = _build_story(report)
@@ -424,10 +398,18 @@ def generate_pdf_bytes(report: AuditReport) -> bytes:
             onFirstPage=_make_page_canvas,
             onLaterPages=_make_page_canvas,
         )
-    except Exception:  # pragma: no cover - surface traceback to logs
-        logger.error("PDF build failed for url=%s report_id=%s:\n%s", report.url, getattr(report, "report_id", None))
-        # Re-raise so the caller can return a 500 to the client.
+    except Exception:
+        # Surface the failure in logs and re-raise so the API layer can
+        # return a 500 with a meaningful message.
+        logger.error(
+            "PDF build failed for url=%s report_id=%s",
+            report.url, getattr(report, "report_id", None),
+            exc_info=True,
+        )
         raise
 
-    logger.info("PDF generation complete for report_id=%s", getattr(report, "report_id", None))
+    logger.info(
+        "PDF generation complete for report_id=%s",
+        getattr(report, "report_id", None),
+    )
     return buffer.getvalue()

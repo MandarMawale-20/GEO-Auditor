@@ -1,9 +1,9 @@
 /*
  * GEO Auditor — Frontend (static, deployed on Cloudflare Pages)
  *
- * Talks to the FastAPI backend on Render via its JSON API (/api/audit).
- * Reports are rendered client-side from the JSON response (no Jinja on Pages).
- * Shared reports are decoded from the URL hash fragment (gzip + base64url).
+ * Talks to the FastAPI backend on Render via /api/audit and renders
+ * reports client-side. Shared reports are decoded from the URL hash
+ * (gzip + base64url).
  */
 (function () {
   "use strict";
@@ -14,7 +14,6 @@
       document.querySelector('meta[name="api-base"]').content) ||
     "https://geo-auditor-api-xx47.onrender.com";
 
-  /* ----------------------------- helpers ----------------------------- */
   function esc(s) {
     if (s === null || s === undefined) return "";
     return String(s)
@@ -50,7 +49,6 @@
     return '<span class="badge ' + cls + '" style="font-size:0.62rem;">' + esc(String(sev || "").toUpperCase()) + "</span>";
   }
 
-  /* ------------------------- finding renderers ------------------------- */
   function findingCard(f) {
     return (
       '<div class="finding ' + f.severity + '">' +
@@ -138,8 +136,6 @@
   function matrixRow(row) {
     const s = row.status;
     const cls = s === "yes" ? "badge-success" : s === "partial" ? "badge-warning" : "badge-danger";
-    const th =
-      'padding:0.6rem 0.75rem; color:var(--text-muted); font-family:var(--font-mono); font-size:0.7rem; font-weight:600; text-transform:uppercase; letter-spacing:0.06em;';
     return (
       "<tr style=\"border-bottom:1px solid var(--border-soft);\">" +
         '<td class="matrix-q" style="padding:0.55rem 0.75rem; font-weight:500; color:var(--text);">' + esc(row.question) + "</td>" +
@@ -149,7 +145,6 @@
     );
   }
 
-  /* --------------------------- report render --------------------------- */
   function renderReport(report) {
     const root = document.getElementById("report-root");
     if (!root || !report) return;
@@ -341,15 +336,13 @@
     initReportInteractions();
   }
 
-  /* --------------------- shared report (hash) decode --------------------- */
   async function decodeShareHash(hash) {
     const raw = hash.replace(/^#/, "").replace(/^report#/, "");
     if (!raw) return null;
     try {
       // The server encodes the payload with base64url (RFC 4648 §5), which
       // uses '-' and '_' instead of standard base64's '+' and '/'. atob() only
-      // accepts standard base64, so translate back before decoding — otherwise
-      // atob() throws InvalidCharacterError and the report fails to open.
+      // accepts standard base64, so translate back before decoding.
       const clean = raw.replace(/-/g, "+").replace(/_/g, "/");
       const padLen = (4 - (clean.length % 4)) % 4;
       const padding = "=".repeat(padLen);
@@ -359,11 +352,9 @@
       const ds = new DecompressionStream("gzip");
       const reader = new Response(new Blob([bytes]).stream()).body.pipeThrough(ds).getReader();
       const decoder = new TextDecoder();
-      // NOTE: must capture the WHOLE {value, done} object from read(); the
-      // previous pattern `done = (await reader.read()).done` assigned the
-      // boolean `.done` property to `done`, making `done.value` always
-      // `undefined` and silently dropping every chunk (the loop ran but
-      // decoded zero bytes — hence "Failed to decode shared report").
+      // Capture the WHOLE {value, done} object from read(). A previous bug
+      // assigned .done to a local, so done.value was always undefined and
+      // every chunk was silently dropped.
       let result;
       let chunks = "";
       while (!(result = await reader.read()).done) {
@@ -390,7 +381,6 @@
     renderReport(data);
   }
 
-  /* --------------------------- interactions --------------------------- */
   function initReportInteractions() {
     const copySummaryBtn = document.getElementById("copy-summary");
     if (copySummaryBtn) {
@@ -419,15 +409,12 @@
     initMotion();
   }
 
-  /* ----------------------------- motion ----------------------------- */
   function initMotion() {
     const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
     const revealEls = document.querySelectorAll(".reveal, .reveal-stagger");
     if (revealEls.length) {
-      if (prefersReducedMotion || !("IntersectionObserver" in window)) {
-        /* leave visible */
-      } else {
+      if (!prefersReducedMotion && "IntersectionObserver" in window) {
         revealEls.forEach(function (el) { el.classList.add("reveal-pending"); });
         const obs = new IntersectionObserver(function (entries) {
           entries.forEach(function (entry) {
@@ -489,7 +476,6 @@
     }
   }
 
-  /* ----------------------------- audit form ----------------------------- */
   function showFormError(msg) {
     const formError = document.getElementById("form-error");
     if (formError) { formError.textContent = msg; formError.style.display = "block"; }
@@ -529,9 +515,9 @@
         if (resp.ok) {
           const data = await resp.json();
           if (data && data.ok && data.report) {
-            // share_url is now an absolute URL (…/report.html#<encoded>).
-            // Handle a bare hash fragment too (older API responses) by
-            // resolving it relative to the report viewer.
+            // share_url is an absolute URL. Handle a bare hash fragment too
+            // (older API responses) by resolving it relative to the report
+            // viewer.
             let share = data.share_url || "";
             if (share && !/^https?:/i.test(share)) {
               share = "report.html#" + share.replace(/^#/, "");
@@ -586,7 +572,6 @@
     }
   }
 
-  /* --------------------------- global onclick --------------------------- */
   window.toggleSection = function (header) {
     const content = header.nextElementSibling;
     const chevron = header.querySelector(".accordion-chevron");
@@ -613,7 +598,6 @@
     }
   };
 
-  /* ------------------------------ init ------------------------------ */
   document.addEventListener("DOMContentLoaded", function () {
     const menuToggle = document.getElementById("menu-toggle");
     if (menuToggle) {
@@ -633,11 +617,9 @@
       }
     }
 
-    // Sample reports are hosted as static files on the SAME origin as this
-    // frontend (Cloudflare Pages), under /samples/{id}.html. Linking to the
-    // API base would open them on the Render backend domain (and they'd be
-    // unstyled there because /static isn't mounted). Keeping them on the
-    // Pages origin means /static/style.css resolves and styling renders.
+    // Sample reports are hosted on the Pages origin under /samples/{id}.html
+    // so /static/style.css resolves. Linking them to the API base would open
+    // them on Render where /static isn't mounted and they'd render unstyled.
     document.querySelectorAll("[data-sample]").forEach(function (a) {
       a.href = "/samples/" + a.dataset.sample + ".html";
       a.target = "_blank";

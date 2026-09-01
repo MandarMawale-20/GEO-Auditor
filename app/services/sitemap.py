@@ -1,19 +1,15 @@
-"""
-Sitemap discovery and freshness extraction.
+"""Sitemap discovery and freshness extraction.
 
-Looks up /sitemap.xml (or a sitemap URL declared in robots.txt), and
-extracts the most recent <lastmod> value found, used by the Freshness
-Signals category.
-
-All sitemap URLs — whether discovered from robots.txt or constructed by
-default — are validated through the centralized SSRF-safe HTTP client
-before any request is made.
+Looks up ``/sitemap.xml`` (or a sitemap URL declared in robots.txt) and
+extracts the most recent ``<lastmod>`` value, used by the Freshness
+Signals category. All candidate URLs are validated through the SSRF-safe
+HTTP client before any request is made.
 """
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 from urllib.parse import urljoin, urlparse
 
 from app.services.http_client import safe_get_text
@@ -36,8 +32,8 @@ async def get_sitemap_info(
 ) -> SitemapResult:
     """Try declared sitemap URLs first, then fall back to /sitemap.xml.
 
-    Every candidate URL is validated by the centralized SSRF-safe client,
-    including redirect destinations.
+    Every candidate URL is validated by the SSRF-safe client, including
+    redirect destinations.
     """
     parsed = urlparse(page_url)
     if not parsed.scheme or not parsed.netloc:

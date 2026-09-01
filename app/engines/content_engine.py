@@ -1,21 +1,15 @@
-"""
-Content Extractability Engine (deterministic).
+"""Content extractability engine: quote readiness, fact density, media balance.
 
-Scores:
-  * Quote Readiness / Answer Extractability (15 pts)
-  * Fact Density & Structured Tables (10 pts)
-  * Media-to-Text Balance (5 pts)
-
-All engines operate on the immutable :class:`ParsedPage` data structure —
-no BeautifulSoup tree traversal occurs here, so these functions are safe
-to call from worker threads.
+All engines operate on the immutable :class:`ParsedPage` data structure, so
+they're safe to call from worker threads without concurrent BeautifulSoup
+traversal.
 """
 from __future__ import annotations
 
 from app.config import (
     CATEGORY_META,
-    CITATION_MIN_WORDS,
     CITATION_MAX_WORDS,
+    CITATION_MIN_WORDS,
     MEDIA_RATIO_CRITICAL,
     MEDIA_RATIO_HEALTHY,
     MIN_NUMERIC_DENSITY,
@@ -42,7 +36,7 @@ def score_quote_readiness(parsed: ParsedPage) -> AuditSection:
     heading_pairs = parsed.heading_pairs
     question_headings = [(h, p) for h, p in heading_pairs if is_question_heading(h)]
 
-    # --- Sub-check 1: question-style headings present (5 pts) ---
+    # Sub-check 1: question-style headings (5 pts)
     question_heading_points = 5.0 if question_headings else 0.0
     section.findings.append(
         Finding(
@@ -64,9 +58,11 @@ def score_quote_readiness(parsed: ParsedPage) -> AuditSection:
                 else f"Checked {len(heading_pairs)} H2/H3 headings; none were phrased as questions."
             ),
             recommendation="Rewrite key section headings as direct questions your customers actually ask.",
-            copy_paste_fix="<h2>What is [Your Product]?</h2>\n<p>[Your Product] is a ... that helps [audience] ... by ....</p>"
-            if not question_heading_points
-            else None,
+            copy_paste_fix=(
+                "<h2>What is [Your Product]?</h2>\n<p>[Your Product] is a ... that helps [audience] ... by ....</p>"
+                if not question_heading_points
+                else None
+            ),
             impact=ImpactLevel.HIGH,
             effort=EffortLevel.MEDIUM,
             points_awarded=question_heading_points,
@@ -74,7 +70,7 @@ def score_quote_readiness(parsed: ParsedPage) -> AuditSection:
         )
     )
 
-    # --- Sub-check 2: lead paragraph CITATION_MIN_WORDS..CITATION_MAX_WORDS after a heading (5 pts) ---
+    # Sub-check 2: a 20-50 word lead paragraph under a heading (5 pts)
     valid_lead_paragraph = None
     for heading, para in question_headings or heading_pairs:
         word_count = len(para.split())
@@ -94,7 +90,7 @@ def score_quote_readiness(parsed: ParsedPage) -> AuditSection:
             ),
             why_it_matters=(
                 "Inverted-pyramid style — answering the question immediately in a concise "
-                "paragraph — is exactly the shape AI systems extract for direct answers."
+                "paragraph — is the shape AI systems extract for direct answers."
             ),
             evidence=(
                 f'Under "{valid_lead_paragraph[0]}": "{valid_lead_paragraph[1][:160]}"'
@@ -109,7 +105,7 @@ def score_quote_readiness(parsed: ParsedPage) -> AuditSection:
         )
     )
 
-    # --- Sub-check 3: low fluff language (5 pts) ---
+    # Sub-check 3: low marketing fluff (5 pts)
     fluff_found = count_fluff_phrases(parsed.visible_text)
     fluff_points = 5.0 if not fluff_found else 0.0
     section.findings.append(
@@ -162,9 +158,11 @@ def score_fact_density(parsed: ParsedPage) -> AuditSection:
             why_it_matters="Tables are highly extractable structured facts AI systems can quote directly (pricing, comparisons, specs).",
             evidence=f"Found {table_count} <table> tag(s) in the DOM.",
             recommendation="Present comparable data (pricing tiers, feature comparisons, specs) in an HTML <table>.",
-            copy_paste_fix="<table>\n  <tr><th>Plan</th><th>Price</th><th>Key Feature</th></tr>\n  <tr><td>Starter</td><td>$0</td><td>...</td></tr>\n</table>"
-            if not table_points
-            else None,
+            copy_paste_fix=(
+                "<table>\n  <tr><th>Plan</th><th>Price</th><th>Key Feature</th></tr>\n  <tr><td>Starter</td><td>$0</td><td>...</td></tr>\n</table>"
+                if not table_points
+                else None
+            ),
             impact=ImpactLevel.MEDIUM,
             effort=EffortLevel.MEDIUM,
             points_awarded=table_points,
@@ -205,7 +203,6 @@ def score_media_to_text_balance(parsed: ParsedPage) -> AuditSection:
     image_count = parsed.image_count
     ratio = word_to_image_ratio(parsed.word_count, image_count)
 
-    # Reuse the same thresholds from config for consistency.
     if image_count == 0 or (ratio is not None and ratio >= MEDIA_RATIO_HEALTHY):
         points, severity = 5.0, Severity.PASS
         title = "Text-to-image balance is healthy"
@@ -230,8 +227,10 @@ def score_media_to_text_balance(parsed: ParsedPage) -> AuditSection:
                 "AI crawlers read text, not images. Information locked inside graphics "
                 "(infographics, pricing screenshots) is invisible to AI answer systems."
             ),
-            evidence=f"{parsed.word_count} words across {image_count} <img> tags"
-            + (f" (ratio {ratio}:1)." if ratio is not None else " (no images found)."),
+            evidence=(
+                f"{parsed.word_count} words across {image_count} <img> tags"
+                + (f" (ratio {ratio}:1)." if ratio is not None else " (no images found).")
+            ),
             recommendation=recommendation,
             impact=ImpactLevel.MEDIUM,
             effort=EffortLevel.MEDIUM,

@@ -28,10 +28,10 @@ from app.scoring import (
 )
 from app.services.fetcher import fetch_html
 from app.services.html_utils import parse_html
-from app.services import llm_service
 from app.services.robots import get_robots_rules
 from app.services.sitemap import get_sitemap_info
 from app.services.url_validator import normalize_url
+from app.services import llm_service
 
 logger = logging.getLogger("geo_auditor.orchestrator")
 
@@ -96,9 +96,8 @@ def _unreachable_report(raw_url: str, url: str, error_message: str, start: float
 async def _run_engine_safely(coro, section_key: str, fallback_label: str) -> AuditSection:
     """Run an engine coroutine with error isolation.
 
-    If the engine raises, log the error server-side and return a
-    ``AuditSection`` with a CRITICAL finding — never propagate the
-    exception to the caller.
+    A failure in one category is converted into a CRITICAL finding so the
+    remaining categories still complete.
     """
     meta = CATEGORY_META[section_key]
     points_possible = SCORE_WEIGHTS.get(section_key, 0)
@@ -129,10 +128,8 @@ async def _run_engine_safely(coro, section_key: str, fallback_label: str) -> Aud
             section.points_awarded = 0
             return section
         return result
-    except Exception as exc:  # noqa: BLE001 — intentional broad catch for isolation
-        logger.error(
-            "Engine failure in %s: %s", section_key, exc, exc_info=True
-        )
+    except Exception as exc:
+        logger.error("Engine failure in %s: %s", section_key, exc, exc_info=True)
         section.points_awarded = 0
         section.findings.append(
             Finding(
@@ -158,13 +155,9 @@ async def _run_engine_safely(coro, section_key: str, fallback_label: str) -> Aud
 async def run_audit(raw_url: str, llm_enabled: bool = False) -> AuditReport:
     """Run a full GEO audit.
 
-    When ``llm_enabled`` is ``False`` (the default), the LLM semantic layer is
-    bypassed entirely — Query Coverage and Citation Snippet Quality fall back
-    to deterministic heuristics and no Groq API calls are made. This keeps
-    the product free-to-run when no API key is configured.
-
-    Each engine runs in an isolated wrapper so that a failure in one
-    category does not prevent the remaining categories from being scored.
+    When ``llm_enabled`` is False the LLM semantic layer is bypassed entirely
+    and Query Coverage / Citation Snippet Quality fall back to deterministic
+    heuristics — the audit always completes.
     """
     start = time.monotonic()
     url = normalize_url(raw_url)
@@ -172,7 +165,6 @@ async def run_audit(raw_url: str, llm_enabled: bool = False) -> AuditReport:
     if not url:
         return _unreachable_report(raw_url, raw_url, "Empty or invalid URL provided.", start)
 
-    # Fetch the page and supporting files together.
     html_result, robots_rules = await asyncio.gather(
         fetch_html(url),
         get_robots_rules(url),
@@ -185,10 +177,8 @@ async def run_audit(raw_url: str, llm_enabled: bool = False) -> AuditReport:
     final_url = html_result.final_url or url
     sitemap_info = await get_sitemap_info(final_url, sitemap_hints=robots_rules.sitemap_urls)
 
-    # Parse once and reuse the result across all engines.
     parsed_document = parse_html(html_result.text)
 
-    # Score every engine concurrently, with error isolation per engine.
     results = await asyncio.gather(
         _run_engine_safely(
             asyncio.to_thread(technical_engine.score_ai_crawler_accessibility, robots_rules),
@@ -275,7 +265,8 @@ async def run_audit(raw_url: str, llm_enabled: bool = False) -> AuditReport:
     fetch_health = FetchHealth(
         http_status=html_result.status_code,
         fetch_time_ms=html_result.elapsed_ms,
-        ttfb_ms=html_result.elapsed_ms,  # httpx does not expose TTFB separately from total time
+        # httpx doesn't expose TTFB separately from total fetch time.
+        ttfb_ms=html_result.elapsed_ms,
         redirect_count=html_result.redirect_count,
         html_size_bytes=html_result.bytes_observed or html_result.content_length,
         reachable=True,

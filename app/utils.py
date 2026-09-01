@@ -1,21 +1,14 @@
-"""
-Shared utilities used across engines and services.
-"""
+"""Shared utilities used across engines and services."""
 from __future__ import annotations
 
 from datetime import datetime, timezone
 
 
 def parse_iso_datetime(value: str | None) -> datetime | None:
-    """Parse an ISO-8601 datetime string robustly.
+    """Parse an ISO-8601 datetime, tolerating trailing ``Z`` and offsets.
 
-    Handles:
-      * Trailing ``Z`` (UTC designator).
-      * Explicit timezone offsets (``+05:30``, ``-08:00``).
-      * Timezone-naive values (assumed UTC).
-      * Malformed / empty input (returns ``None``).
-
-    Policy: timezone-naive timestamps are assumed to be UTC for consistency.
+    Timezone-naive timestamps are assumed to be UTC. Returns ``None`` for
+    empty or malformed input.
     """
     if not value:
         return None
@@ -30,3 +23,4 @@ def parse_iso_datetime(value: str | None) -> datetime | None:
         return parsed_dt
     except (ValueError, TypeError):
         return None
+

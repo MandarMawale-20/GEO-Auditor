@@ -1,12 +1,7 @@
-"""
-Entity & Trust Engine.
+"""Entity & Trust engine: JSON-LD organization, schema fields, trust-page reachability.
 
-Scores:
-  * Structured Entity Data (10 pts) — JSON-LD Organization/Product presence + sameAs
-  * Entity Completeness & Trust (10 pts) — required schema fields + working about/contact pages
-
-Trust-page reachability checks use the centralized SSRF-safe HTTP client with
-HEAD-then-GET fallback, DEFAULT_HEADERS, and response-size limits.
+Trust-page reachability goes through the SSRF-safe HTTP client (HEAD-then-GET,
+default headers, response-size limits).
 """
 from __future__ import annotations
 
@@ -45,9 +40,9 @@ def score_structured_entity_data(parsed: ParsedPage) -> AuditSection:
                 severity=Severity.CRITICAL,
                 title="No Organization or Product JSON-LD found",
                 why_it_matters=(
-                    "AI systems rely on structured data (JSON-LD) to build entity confidence "
-                    "about who you are. Without it, the model has to infer everything from "
-                    "unstructured prose, which is far less reliable for citation."
+                    "AI systems rely on structured data (JSON-LD) to build entity confidence. "
+                    "Without it, the model has to infer everything from unstructured prose, "
+                    "which is far less reliable for citation."
                 ),
                 evidence="No JSON-LD block with an Organization, Product, or SoftwareApplication type was found.",
                 recommendation="Add an Organization JSON-LD block to your homepage <head>.",
@@ -91,7 +86,6 @@ def score_structured_entity_data(parsed: ParsedPage) -> AuditSection:
         return section
 
     entity = entities[0]
-    points = 7.0
     section.findings.append(
         Finding(
             category="structured_entity_data",
@@ -116,7 +110,6 @@ def score_structured_entity_data(parsed: ParsedPage) -> AuditSection:
     ]
 
     if trusted_links:
-        points += 3
         section.findings.append(
             Finding(
                 category="structured_entity_data",
@@ -132,6 +125,7 @@ def score_structured_entity_data(parsed: ParsedPage) -> AuditSection:
                 points_possible=3,
             )
         )
+        section.points_awarded = 10
     else:
         section.findings.append(
             Finding(
@@ -149,30 +143,22 @@ def score_structured_entity_data(parsed: ParsedPage) -> AuditSection:
                 points_possible=3,
             )
         )
+        section.points_awarded = 7
 
-    section.points_awarded = points
     return section
 
 
 async def _check_page_reachable(base_url: str, href: str | None) -> bool:
-    """Check whether a trust-page link resolves to a live page.
+    """Whether a trust-page link resolves to a live page.
 
-    Uses the centralized SSRF-safe HTTP client (``safe_head_or_get``) which:
-      * validates the URL scheme and SSRF-safety (all resolved IPs),
-      * validates each redirect target independently,
-      * tries HEAD first, falling back to a bounded GET if the method
-        is not allowed,
-      * applies ``DEFAULT_HEADERS``,
-      * enforces response-size limits.
-
-    Never raises — any failure is treated as "page not reachable".
+    Routes through ``safe_head_or_get`` which validates the URL on every
+    redirect, applies default headers, and caps response size. Never raises —
+    any failure is treated as "not reachable".
     """
     if not href:
         return False
 
-    # Normalize relative/protocol-relative URLs against the audited page's base URL.
     target = urljoin(base_url, href)
-
     result = await safe_head_or_get(target, max_bytes=settings.max_html_bytes)
     return bool(result.ok and result.status_code is not None and result.status_code < 400)
 
@@ -189,7 +175,6 @@ async def score_entity_completeness_trust(parsed: ParsedPage, base_url: str) -> 
     entities = find_entities_by_type(parsed.json_ld_blocks, ORG_TYPES)
     entity = entities[0] if entities else {}
 
-    # --- Schema field completeness (5 pts) ---
     required_fields = ("name", "logo", "description")
     present_fields = [f for f in required_fields if entity.get(f)]
     missing_fields = [f for f in required_fields if f not in present_fields]
@@ -218,7 +203,6 @@ async def score_entity_completeness_trust(parsed: ParsedPage, base_url: str) -> 
         )
     )
 
-    # --- Trust page reachability (5 pts) — about / contact ---
     about_href = parsed.about_href
     contact_href = parsed.contact_href
 
@@ -227,9 +211,7 @@ async def score_entity_completeness_trust(parsed: ParsedPage, base_url: str) -> 
         _check_page_reachable(base_url, contact_href),
     )
 
-    trust_points = 0.0
-    if about_ok or contact_ok:
-        trust_points = 5.0
+    trust_points = 5.0 if (about_ok or contact_ok) else 0.0
     found_pages = [
         label for label, ok in (("About", about_ok), ("Contact", contact_ok)) if ok
     ]

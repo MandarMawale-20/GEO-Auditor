@@ -1,12 +1,11 @@
-"""
-Custom async robots.txt parser.
+"""Async robots.txt parser.
 
-Deliberately avoids urllib.robotparser: we need per-AI-crawler visibility
-(OAI-SearchBot, PerplexityBot, ClaudeBot/Claude-Web, Googlebot) rather than
-a single allow/deny verdict, and we need it to work on partially malformed
-robots.txt files without raising.
+Deliberately avoids ``urllib.robotparser`` because we need per-AI-crawler
+visibility (OAI-SearchBot, PerplexityBot, ClaudeBot/Claude-Web, Googlebot)
+rather than a single allow/deny verdict, and we need to keep going on
+partially malformed robots.txt files without raising.
 
-fetches robots.txt through the centralized SSRF-safe HTTP client.
+Fetches robots.txt through the centralized SSRF-safe HTTP client.
 """
 from __future__ import annotations
 
@@ -34,17 +33,16 @@ class RobotsRules:
         if rules is None:
             # Fall back to wildcard rules if the specific bot isn't mentioned.
             rules = self.disallow_by_agent.get("*", [])
-        for path in rules:
-            if path.strip() == "/":
-                return True
-        return False
+        return any(path.strip() == "/" for path in rules)
 
     def is_mentioned(self, user_agent: str) -> bool:
         return user_agent.lower() in self.disallow_by_agent
 
 
-def _parse_robots_txt(raw_text: str, base_url: str) -> tuple[dict[str, list[str]], list[str]]:
-    """Parse robots.txt content into {user-agent: [disallow paths]} + sitemap URLs.
+def _parse_robots_txt(
+    raw_text: str, base_url: str
+) -> tuple[dict[str, list[str]], list[str]]:
+    """Parse robots.txt into ``{user-agent: [disallow paths]}`` + sitemap URLs.
 
     ``base_url`` is the fully-qualified robots.txt URL, used to resolve
     relative sitemap paths per RFC 9309.
@@ -63,16 +61,13 @@ def _parse_robots_txt(raw_text: str, base_url: str) -> tuple[dict[str, list[str]
 
         if field_name == "user-agent":
             agent = value.lower()
-            # A fresh User-agent line right after a Disallow/Allow starts a new group.
-            if current_agents and current_agents[-1] in disallow_by_agent and any(
-                disallow_by_agent.get(a) for a in current_agents
-            ):
+            if current_agents and _has_rules(disallow_by_agent, current_agents):
+                # A new User-agent after a group with rules starts a fresh group.
                 current_agents = [agent]
-            else:
-                if agent not in current_agents:
-                    current_agents = current_agents + [agent] if current_agents else [agent]
+            elif agent not in current_agents:
+                current_agents = current_agents + [agent] if current_agents else [agent]
             for agent_name in current_agents:
-                disallow_by_agent.setdefault(agent_name, disallow_by_agent.get(agent_name, []))
+                disallow_by_agent.setdefault(agent_name, [])
         elif field_name == "disallow" and current_agents:
             for agent_name in current_agents:
                 if value:
@@ -80,27 +75,30 @@ def _parse_robots_txt(raw_text: str, base_url: str) -> tuple[dict[str, list[str]
                 else:
                     disallow_by_agent.setdefault(agent_name, [])
         elif field_name == "sitemap":
-            full_sitemap_url = urljoin(base_url, value)
-            sitemaps.append(full_sitemap_url)
+            sitemaps.append(urljoin(base_url, value))
 
     return disallow_by_agent, sitemaps
 
 
-async def get_robots_rules(page_url: str) -> RobotsRules:
-    """Fetch and parse robots.txt for the domain hosting page_url.
+def _has_rules(
+    disallow_by_agent: dict[str, list[str]], agents: list[str]
+) -> bool:
+    return any(disallow_by_agent.get(a) for a in agents)
 
-    The robots.txt URL is constructed from the validated ``page_url`` and
-    fetched through the centralized SSRF-safe HTTP client.
-    """
+
+async def get_robots_rules(page_url: str) -> RobotsRules:
+    """Fetch and parse robots.txt for the domain hosting *page_url*."""
     parsed = urlparse(page_url)
     if not parsed.scheme or not parsed.netloc:
-        return RobotsRules(exists=False, fetch_error="Invalid base URL for robots.txt lookup.")
+        return RobotsRules(
+            exists=False, fetch_error="Invalid base URL for robots.txt lookup."
+        )
 
     robots_url = urljoin(f"{parsed.scheme}://{parsed.netloc}", "/robots.txt")
     result = await safe_get_text(robots_url, allow_redirects=True, max_redirects=5)
 
     if not result.ok or not result.text:
-        # Missing robots.txt is treated as "allowed / no restrictions" per spec.
+        # Missing robots.txt means "no restrictions" per spec.
         return RobotsRules(exists=False, fetch_error=result.error)
 
     disallow_by_agent, sitemaps = _parse_robots_txt(result.text, robots_url)

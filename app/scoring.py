@@ -4,10 +4,17 @@ from __future__ import annotations
 from app.config import TOTAL_POSSIBLE_SCORE
 from app.models import AnswerabilityRow, AnswerabilityStatus, AuditSection, Finding, Severity
 
-_ANSWERABILITY_DIFFERENTIATION_KEYWORDS = (
+_DIFFERENTIATION_KEYWORDS = (
     "unlike", "compared to", "instead of", "vs.", "vs ", "better than",
     "alternative to", "why choose", "why us", "what sets us apart",
 )
+
+_DIMENSION_QUESTIONS = {
+    "what": "What does this company do?",
+    "who": "Who is it for?",
+    "problem": "What problem does it solve?",
+    "outcome": "What measurable result does it provide?",
+}
 
 GRADE_BANDS: list[tuple[float, str, str]] = [
     (85, "A", "Excellent AI answerability"),
@@ -37,23 +44,23 @@ def collect_findings(sections: list[AuditSection]) -> list[Finding]:
 
 
 def build_priority_roadmap(findings: list[Finding]) -> list[Finding]:
-    """All actionable findings sorted by impact-vs-effort priority score, worst-first."""
+    """Actionable findings sorted by impact-vs-effort priority, worst-first."""
     actionable = [f for f in findings if f.severity in (Severity.CRITICAL, Severity.WARNING)]
     actionable.sort(key=lambda f: (f.priority_score, f.points_possible - f.points_awarded), reverse=True)
     return actionable
 
 
 def select_top_priorities(findings: list[Finding], limit: int = 3) -> list[Finding]:
-    """Top N findings for the Monday-morning highlight row."""
+    """Top N findings for the headline row."""
     return build_priority_roadmap(findings)[:limit]
 
 
 def build_answerability_matrix(sections: list[AuditSection], page_text: str) -> list[AnswerabilityRow]:
     """Build the answerability matrix from structured ``dimension`` fields.
 
-    The query_coverage engine tags each Finding with a ``dimension`` value
-    ("what", "who", "problem", "outcome").  This function uses that structured
-    field instead of fragile title matching.
+    The query_coverage engine tags each finding with a ``dimension`` value
+    (``"what"``, ``"who"``, ``"problem"``, ``"outcome"``); we use that field
+    rather than fragile title matching.
     """
     dimension_findings: dict[str, Finding] = {}
     for section in sections:
@@ -62,16 +69,8 @@ def build_answerability_matrix(sections: list[AuditSection], page_text: str) -> 
                 if f.dimension:
                     dimension_findings[f.dimension] = f
 
-    # Map dimension → (matrix question, answerability status)
-    dimension_questions = {
-        "what": "What does this company do?",
-        "who": "Who is it for?",
-        "problem": "What problem does it solve?",
-        "outcome": "What measurable result does it provide?",
-    }
-
     rows: list[AnswerabilityRow] = []
-    for dim, question in dimension_questions.items():
+    for dim, question in _DIMENSION_QUESTIONS.items():
         finding = dimension_findings.get(dim)
         if finding is None:
             rows.append(AnswerabilityRow(
@@ -92,9 +91,9 @@ def build_answerability_matrix(sections: list[AuditSection], page_text: str) -> 
                 evidence=finding.evidence,
             ))
 
-    # --- Differentiation / "Why choose it?" ---
+    # Differentiation / "Why choose it?"
     lowered_text = page_text.lower()
-    has_differentiation = any(k in lowered_text for k in _ANSWERABILITY_DIFFERENTIATION_KEYWORDS)
+    has_differentiation = any(k in lowered_text for k in _DIFFERENTIATION_KEYWORDS)
     rows.append(AnswerabilityRow(
         question="Why choose it over alternatives?",
         status=AnswerabilityStatus.YES if has_differentiation else AnswerabilityStatus.NO,

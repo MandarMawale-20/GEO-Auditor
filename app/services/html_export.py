@@ -91,10 +91,10 @@ def render(report: AuditReport) -> str:
 
     matrix_rows = "".join(
         f"<tr><td>{row.question}</td>"
-        f'<td><span class="badge {_STATUS_LABELS.get(row.status.value, _STATUS_LABELS["no"])[1]}">'
-        f"{_STATUS_LABELS.get(row.status.value, _STATUS_LABELS['no'])[0]}</span></td>"
+        f'<td><span class="badge {label_class}">{label_text}</span></td>'
         f"<td>{row.evidence or ''}</td></tr>"
         for row in report.answerability_matrix
+        for label_text, label_class in [_STATUS_LABELS.get(row.status.value, _STATUS_LABELS["no"])]
     ) or '<tr><td colspan="3" style="color:#8c8163;">No matrix data available</td></tr>'
 
     findings_html = []

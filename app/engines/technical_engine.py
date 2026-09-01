@@ -5,8 +5,8 @@ from datetime import datetime, timezone
 
 from app.config import (
     AI_CRAWLER_POINTS,
-    CRAWLER_ALIASES,
     CATEGORY_META,
+    CRAWLER_ALIASES,
     LIMITED_TEXT_WORDS,
     SUFFICIENT_TEXT_WORDS,
 )
@@ -36,9 +36,8 @@ def score_ai_crawler_accessibility(robots: RobotsRules) -> AuditSection:
                 severity=Severity.INFO,
                 title="No robots.txt found — AI crawlers are unrestricted by default",
                 why_it_matters=(
-                    "Without a robots.txt file, all crawlers (including AI search bots) "
-                    "are implicitly allowed. This is fine, but an explicit robots.txt "
-                    "gives you control and signals intentionality."
+                    "Without a robots.txt, all crawlers are implicitly allowed. "
+                    "An explicit robots.txt gives you control and signals intent."
                 ),
                 evidence="robots.txt returned a non-200 response or was unreachable.",
                 recommendation=(
@@ -148,9 +147,8 @@ def score_js_rendering_risk(parsed: ParsedPage) -> AuditSection:
             else "Raw HTML has very little text"
         )
         recommendation = (
-            "This page appears to render content client-side via JavaScript. Most AI "
-            "crawlers do not execute JS, so implement server-side rendering (SSR), "
-            "static generation, or dynamic rendering for bot user-agents."
+            "Most AI crawlers do not execute JavaScript. Implement server-side "
+            "rendering, static generation, or dynamic rendering for bot user-agents."
         )
 
     section.findings.append(
@@ -167,7 +165,7 @@ def score_js_rendering_risk(parsed: ParsedPage) -> AuditSection:
             evidence=(
                 f"Raw HTML contains approximately {word_count} visible words. "
                 f"SPA markers detected: {spa_markers_present} "
-                f"(checked for __NEXT_DATA__, id=\"root\", bundle.js, __NUXT__)."
+                f'(checked for __NEXT_DATA__, id="root", bundle.js, __NUXT__).'
             ),
             recommendation=recommendation,
             copy_paste_fix=None,
@@ -191,14 +189,12 @@ def score_freshness_signals(parsed: ParsedPage, sitemap: SitemapResult) -> Audit
 
     candidates: list[tuple[str, datetime]] = []
 
-    # --- article:modified_time from meta contents ---
     article_modified = parsed.meta_contents.get("article:modified_time")
     if article_modified:
         dt = parse_iso_datetime(article_modified)
         if dt:
             candidates.append(("meta article:modified_time", dt))
 
-    # --- JSON-LD dateModified ---
     for block in parsed.json_ld_blocks:
         date_modified = block.get("dateModified")
         if isinstance(date_modified, str):
@@ -206,7 +202,6 @@ def score_freshness_signals(parsed: ParsedPage, sitemap: SitemapResult) -> Audit
             if dt:
                 candidates.append(("JSON-LD dateModified", dt))
 
-    # --- Sitemap lastmod ---
     if sitemap.most_recent_lastmod:
         candidates.append(("sitemap.xml <lastmod>", sitemap.most_recent_lastmod))
 

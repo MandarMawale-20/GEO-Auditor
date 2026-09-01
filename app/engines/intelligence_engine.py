@@ -1,16 +1,8 @@
-"""
-Intelligence (Semantic) Engine — hybrid LLM + deterministic fallback.
+"""Intelligence (semantic) engine: hybrid LLM scoring with deterministic fallback.
 
-Scores:
-  * Query Coverage (15 pts) — does the page answer what/who/problem/outcome?
-  * AI Citation Snippet Quality (10 pts) — is there a clean, quotable summary?
-
-Uses Groq (OpenAI-compatible Chat Completions API) when GROQ_API_KEY is
-configured; otherwise falls back to keyword/heuristic scoring so the audit
+When ``GROQ_API_KEY`` is set the LLM scores query coverage and citation
+snippet quality; otherwise deterministic heuristics run so the audit
 always completes.
-
-Both functions are async-safe: they operate on the immutable
-:class:`ParsedPage` data structure and do not traverse a BeautifulSoup tree.
 """
 from __future__ import annotations
 
@@ -75,7 +67,7 @@ PAGE TEXT:
 
 def _fallback_query_coverage(page_text: str) -> dict:
     lowered = page_text.lower()
-    what_score = 1 if len(page_text.split()) > 40 else 0  # weak proxy: page has real content
+    what_score = 1 if len(page_text.split()) > 40 else 0
     who_score = 1 if any(k in lowered for k in _WHO_KEYWORDS) else 0
     problem_score = 1 if any(k in lowered for k in _PROBLEM_KEYWORDS) else 0
     outcome_score = 1 if any(k in lowered for k in _OUTCOME_KEYWORDS) else 0
@@ -132,7 +124,7 @@ async def score_query_coverage(
         section.findings.append(
             Finding(
                 category="query_coverage",
-                dimension=dimension,  # structured field for answerability matrix
+                dimension=dimension,
                 severity=Severity.PASS if answered else Severity.WARNING,
                 title=f"{_DIMENSION_LABELS[dimension]}: {'answered' if answered else 'not clearly answered'}",
                 why_it_matters=(
@@ -177,9 +169,8 @@ TEXT TO EVALUATE:
 def _fallback_citation_quality(candidate_paragraph: str | None) -> tuple[bool, str]:
     if not candidate_paragraph:
         return False, "No 20-60 word self-contained paragraph was found on the page."
-    lowered = candidate_paragraph.lower()
     has_number = bool(re.search(r"\d", candidate_paragraph))
-    has_outcome_word = any(k in lowered for k in _OUTCOME_KEYWORDS)
+    has_outcome_word = any(k in candidate_paragraph.lower() for k in _OUTCOME_KEYWORDS)
     if has_number or has_outcome_word:
         return True, "Heuristic: paragraph is well-sized and contains a number or outcome-related term."
     return False, "Heuristic: paragraph is well-sized but lacks a measurable benefit or number."
@@ -196,7 +187,6 @@ async def score_citation_snippet_quality(
         points_possible=10,
     )
 
-    # Use the pre-extracted citation paragraph — no soup traversal needed.
     candidate = parsed.citation_paragraph
     llm_used = False
     is_strong: bool

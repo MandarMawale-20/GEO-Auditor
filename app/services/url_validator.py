@@ -1,10 +1,9 @@
-"""
-Strict URL validation against SSRF and unsafe-scheme abuse.
+"""Strict URL validation against SSRF and unsafe-scheme abuse.
 
-All public functions are async so that the DNS-resolution step (the real
-SSRF guard) does not block the event loop.  It is used by the ``/audit``
-endpoint and the centralized HTTP client to reject URLs that could be used
-to probe internal services or trigger unintended protocol handlers.
+All public functions are async so the DNS-resolution step (the real SSRF
+guard) does not block the event loop. It is used by the ``/audit`` endpoint
+and the centralized HTTP client to reject URLs that could be used to probe
+internal services or trigger unintended protocol handlers.
 
 Rejected:
   * Non-http(s) schemes (file://, ftp://, data:, gopher://, ...)
@@ -26,12 +25,11 @@ import ipaddress
 import re
 import socket
 from dataclasses import dataclass
-from typing import Optional
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import urlsplit
 
 MAX_URL_LENGTH = 2048
 
-# Schemes we permit.  Anything else (file, ftp, data, gopher, ...) is rejected.
+# Schemes we permit. Anything else (file, ftp, data, gopher, ...) is rejected.
 ALLOWED_SCHEMES = {"http", "https"}
 
 # Literal hostnames we never allow.
@@ -48,24 +46,15 @@ _BLOCKED_HOSTNAMES = frozenset(
 # TLDs that virtually always indicate an internal host.
 _BLOCKED_TLDS = (".local", ".internal", ".intranet", ".home")
 
-
-@dataclass
-class ValidationResult:
-    """Outcome of :func:`validate_url`."""
-
-    is_valid: bool
-    reason: Optional[str] = None  # populated when is_valid is False
+# Used by URL syntax check and DNS check to reject control characters early.
+_CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f]")
 
 
-# ---------------------------------------------------------------------------
-# URL normalization (single canonical implementation)
-# ---------------------------------------------------------------------------
 def normalize_url(raw_url: str) -> str:
     """Auto-prepend ``https://`` if the scheme is missing.
 
-    This is the **only** place that should perform URL normalization.
-    Callers must use :func:`normalize_and_validate` rather than duplicating
-    the ``if "://" not in url`` pattern.
+    This is the single canonical place for scheme auto-prepending; callers
+    that need validation on top should use :func:`normalize_and_validate`.
     """
     if not raw_url:
         return raw_url
@@ -77,19 +66,22 @@ def normalize_url(raw_url: str) -> str:
     return candidate
 
 
-# ---------------------------------------------------------------------------
-# Hostname / IP validation (the real SSRF guard)
-# ---------------------------------------------------------------------------
-def _ip_is_blocked(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> Optional[str]:
+@dataclass
+class ValidationResult:
+    """Outcome of :func:`validate_url`."""
+
+    is_valid: bool
+    reason: str | None = None  # populated when is_valid is False
+
+
+def _ip_is_blocked(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> str | None:
     """Return a rejection reason if *ip* is non-public, otherwise ``None``.
 
     Covers loopback, private, link-local, multicast, unspecified, and
-    reserved ranges for both IPv4 and IPv6.
+    reserved ranges for both IPv4 and IPv6. Each branch returns a precise
+    message so callers can surface the actual reason.
     """
-    if ip.is_global and not ip.is_private:
-        # ``is_global`` in the ipaddress module also returns False for
-        # private, loopback, link-local, multicast, and unspecified — but
-        # we check each case explicitly to give precise error messages.
+    if ip.is_global:
         return None
 
     if ip.is_loopback:
@@ -107,47 +99,42 @@ def _ip_is_blocked(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> Optiona
     return "URL resolves to a non-routable IP address."
 
 
-async def _hostname_is_blocked(hostname: str) -> Optional[str]:
+async def _hostname_is_blocked(hostname: str) -> str | None:
     """Return a rejection reason if *hostname* is unsafe, otherwise ``None``.
 
-    Performs **both** a syntactic check (reject literal hostnames like
-    ``localhost``) and a DNS check (reject IPs that resolve to private /
-    loopback / link-local ranges).
-
-    The DNS check resolves **all** addresses (IPv4 *and* IPv6) via
-    :func:`socket.getaddrinfo` and rejects if **any** resolved IP is
-    non-routable.  This prevents dual-stack bypass where one address is
-    public and another is private.
+    Performs a syntactic check (reject literal hostnames like ``localhost``)
+    and a DNS check (reject IPs that resolve to private / loopback / link-
+    local ranges). The DNS check resolves *all* addresses (IPv4 *and* IPv6)
+    via :func:`socket.getaddrinfo` and rejects if any resolved IP is non-
+    routable, preventing dual-stack bypass where one address is public and
+    another is private.
     """
     if not hostname:
         return "URL has no hostname."
 
-    # --- Literal hostnames we never allow ---
     if hostname.lower() in _BLOCKED_HOSTNAMES:
         return "URL hostname is a blocked local hostname."
 
-    # --- IP literals (v4 / v6) ---
+    # IP literal (v4 / v6)
     try:
         ip = ipaddress.ip_address(hostname)
     except ValueError:
-        ip = None  # not an IP literal — fall through to DNS resolution
+        ip = None
 
     if ip is not None:
         return _ip_is_blocked(ip)
 
-    # --- Internal TLD suffixes ---
     lower = hostname.lower()
     if lower.endswith(_BLOCKED_TLDS):
         return "URL hostname uses a private/internal TLD suffix."
 
-    # --- Single-label hostnames (e.g. "myserver") ---
     if "." not in hostname:
         return "URL hostname is a single-label internal name."
 
-    # --- Hostname — resolve via DNS and check ALL addresses ---
+    # Resolve via DNS and check ALL addresses.
     try:
-        # getaddrinfo returns every resolved address (IPv4 + IPv6).
-        # It is a blocking call — run in a thread to avoid blocking.
+        # getaddrinfo returns every resolved address (IPv4 + IPv6). It is a
+        # blocking call — run in a thread to avoid blocking the event loop.
         original_timeout = socket.getdefaulttimeout()
         socket.setdefaulttimeout(5.0)
         try:
@@ -156,7 +143,7 @@ async def _hostname_is_blocked(hostname: str) -> Optional[str]:
             socket.setdefaulttimeout(original_timeout)
     except socket.gaierror:
         # DNS failure — the host may simply not exist, which is not an
-        # SSRF risk.  Let the fetch layer report the fetch error.
+        # SSRF risk. Let the fetch layer report the fetch error.
         return None
     except socket.timeout:
         return "URL hostname could not be resolved within the time limit."
@@ -164,9 +151,8 @@ async def _hostname_is_blocked(hostname: str) -> Optional[str]:
         return None
 
     for _family, _type, _proto, _canon, sockaddr in infos:
-        ip_str = sockaddr[0]
         try:
-            ip = ipaddress.ip_address(ip_str)
+            ip = ipaddress.ip_address(sockaddr[0])
         except ValueError:
             continue
         blocked = _ip_is_blocked(ip)
@@ -179,13 +165,10 @@ async def _hostname_is_blocked(hostname: str) -> Optional[str]:
     return None
 
 
-# ---------------------------------------------------------------------------
-# Public validation API
-# ---------------------------------------------------------------------------
 async def validate_url(url: str) -> ValidationResult:
     """Validate a URL for safety before fetching.
 
-    Returns a :class:`ValidationResult`.  Callers should treat
+    Returns a :class:`ValidationResult`. Callers should treat
     ``is_valid=False`` as a hard rejection.
     """
     if not url or not isinstance(url, str):
@@ -196,10 +179,11 @@ async def validate_url(url: str) -> ValidationResult:
         return ValidationResult(False, "URL is empty.")
 
     if len(stripped) > MAX_URL_LENGTH:
-        return ValidationResult(False, "URL exceeds the maximum allowed length (2048 characters).")
+        return ValidationResult(
+            False, "URL exceeds the maximum allowed length (2048 characters)."
+        )
 
-    # Reject control characters.
-    if re.search(r"[\x00-\x1f\x7f]", stripped):
+    if _CONTROL_CHARS_RE.search(stripped):
         return ValidationResult(False, "URL contains control characters.")
 
     try:
@@ -207,7 +191,6 @@ async def validate_url(url: str) -> ValidationResult:
     except (ValueError, TypeError):
         return ValidationResult(False, "URL is malformed and could not be parsed.")
 
-    # --- Scheme check ---
     scheme = (parsed.scheme or "").lower()
     if scheme not in ALLOWED_SCHEMES:
         return ValidationResult(
@@ -215,7 +198,6 @@ async def validate_url(url: str) -> ValidationResult:
             f"URL scheme '{scheme}' is not allowed. Only http and https are permitted.",
         )
 
-    # --- Userinfo (credentials) check ---
     if parsed.username or parsed.password:
         return ValidationResult(False, "URLs with credentials (userinfo) are not allowed.")
 
@@ -223,7 +205,6 @@ async def validate_url(url: str) -> ValidationResult:
     if not hostname:
         return ValidationResult(False, "URL has no hostname.")
 
-    # --- SSRF / private-IP check ---
     blocked_reason = await _hostname_is_blocked(hostname)
     if blocked_reason:
         return ValidationResult(False, blocked_reason)
@@ -231,7 +212,7 @@ async def validate_url(url: str) -> ValidationResult:
     return ValidationResult(True, None)
 
 
-async def normalize_and_validate(raw_url: str) -> tuple[Optional[str], Optional[str]]:
+async def normalize_and_validate(raw_url: str) -> tuple[str | None, str | None]:
     """Auto-prepend ``https://`` when no scheme is present, then validate.
 
     Returns ``(normalized_url, None)`` on success or ``(None, error_reason)``

@@ -1,6 +1,4 @@
-"""
-Pydantic v2 models shared across services, engines, scoring, and templates.
-"""
+"""Pydantic v2 models shared across services, engines, and scoring."""
 from __future__ import annotations
 
 from enum import Enum
@@ -33,20 +31,12 @@ class AnswerabilityStatus(str, Enum):
     NO = "no"
 
 
-# --------------------------------------------------------------------------
-# Fetch layer
-# --------------------------------------------------------------------------
 class FetchResult(BaseModel):
     """Raw result of fetching a single resource (HTML page, robots.txt, sitemap).
 
-    Size semantics:
-      * ``content_length`` — value of the HTTP ``Content-Length`` header, if
-        present and trustworthy.  May be ``None`` when absent or when the body
-        was streamed without a Content-Length.
-      * ``bytes_observed`` — total bytes actually read from the response stream.
-      * ``bytes_retained`` — bytes kept after applying the size cap (``<= max``).
-      * ``truncated`` — ``True`` when the response exceeded the size limit and
-        was cut short.
+    ``bytes_observed`` is the total bytes streamed from the response, and
+    ``bytes_retained`` is what was kept after applying the size cap.
+    ``truncated`` is True when the body was cut short.
     """
 
     url: str
@@ -78,15 +68,12 @@ class FetchHealth(BaseModel):
     truncated: bool = False
 
 
-# --------------------------------------------------------------------------
-# Findings
-# --------------------------------------------------------------------------
 class Finding(BaseModel):
     """A single, evidence-backed audit finding tied to one scoring category.
 
-    The ``dimension`` field optionally ties a finding to a structured query-
-    coverage dimension (e.g. ``"what"``, ``"who"``) so that answerability
-    matrix construction does not depend on matching display titles.
+    ``dimension`` optionally tags a finding with a query-coverage dimension
+    (e.g. ``"what"``, ``"who"``) so the answerability matrix doesn't have
+    to match on display titles.
     """
 
     category: str
@@ -104,7 +91,7 @@ class Finding(BaseModel):
 
     @property
     def priority_score(self) -> float:
-        """Higher = fix first. Impact/effort collapsed to a single sortable number."""
+        """Higher = fix first. Impact collapsed against effort into a sortable number."""
         impact_str = self.impact.value if isinstance(self.impact, Enum) else str(self.impact)
         effort_str = self.effort.value if isinstance(self.effort, Enum) else str(self.effort)
 
@@ -137,9 +124,6 @@ class AnswerabilityRow(BaseModel):
     evidence: str = ""
 
 
-# --------------------------------------------------------------------------
-# Top-level report
-# --------------------------------------------------------------------------
 class AuditReport(BaseModel):
     url: str
     final_url: str | None = None
@@ -157,7 +141,6 @@ class AuditReport(BaseModel):
     llm_enhanced: bool
     llm_error: str | None = None
     audit_duration_ms: float
-    is_smoke_test: bool = False
     report_id: str | None = None
 
     model_config = {"use_enum_values": False}
