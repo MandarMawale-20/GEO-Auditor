@@ -53,6 +53,15 @@ QUESTION_WORDS: tuple[str, ...] = (
 
 
 @dataclass
+class LinkRef:
+    """An anchor discovered in the document, with a navigation prominence weight."""
+
+    href: str
+    text: str
+    weight: int
+
+
+@dataclass
 class ParsedPage:
     """Immutable snapshot of all data extracted from an HTML document.
 
@@ -74,6 +83,12 @@ class ParsedPage:
     meta_contents: dict[str, str] = field(default_factory=dict)
     about_href: str | None = None
     contact_href: str | None = None
+    title: str = ""
+    h1: str = ""
+    canonical_url: str | None = None
+    meta_robots: str = ""
+    links: list[LinkRef] = field(default_factory=list)
+
 
 
 def parse_html(raw_html: str) -> ParsedPage:
@@ -125,6 +140,37 @@ def parse_html(raw_html: str) -> ParsedPage:
     about_href = _page_exists_link(soup, ("about", "/about", "about-us"))
     contact_href = _page_exists_link(soup, ("contact", "/contact", "contact-us"))
 
+    title_tag = soup.find("title")
+    title_text = title_tag.get_text(strip=True) if title_tag else ""
+    h1_tag = soup.find("h1")
+    h1_text = h1_tag.get_text(strip=True) if h1_tag else ""
+
+    canonical_tag = soup.find(
+        "link",
+        rel=lambda v: v is not None and "canonical" in (
+            [str(x).lower() for x in v] if isinstance(v, list) else [str(v).lower()]
+        ),
+    )
+    canonical_url = canonical_tag.get("href") if canonical_tag else None
+
+    meta_robots = (meta_contents.get("robots") or "").lower()
+    x_robots = (meta_contents.get("x-robots-tag") or "").lower()
+    if x_robots:
+        meta_robots = f"{meta_robots} {x_robots}".strip()
+
+    links: list[LinkRef] = []
+    for anchor in soup.find_all("a", href=True):
+        href = str(anchor.get("href") or "").strip()
+        if not href or href.startswith(("#", "mailto:", "tel:", "javascript:")):
+            continue
+        text = anchor.get_text(" ", strip=True)[:120]
+        weight = 1
+        if anchor.find_parent(["nav", "header"]) is not None:
+            weight = 3
+        elif anchor.find_parent(["main", "article"]) is not None:
+            weight = 2
+        links.append(LinkRef(href=href, text=text, weight=weight))
+
     for tag in soup(["script", "style", "noscript"]):
         tag.decompose()
     visible_text = " ".join(soup.get_text(separator=" ").split())
@@ -144,6 +190,11 @@ def parse_html(raw_html: str) -> ParsedPage:
         meta_contents=meta_contents,
         about_href=about_href,
         contact_href=contact_href,
+        title=title_text,
+        h1=h1_text,
+        canonical_url=canonical_url,
+        meta_robots=meta_robots,
+        links=links,
     )
 
 

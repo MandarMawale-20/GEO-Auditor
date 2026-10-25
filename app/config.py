@@ -132,6 +132,12 @@ MIN_NUMERIC_DENSITY: int = 3  # numeric tokens per 500 words for full points
 MEDIA_RATIO_HEALTHY: int = 50  # words per image — healthy
 MEDIA_RATIO_CRITICAL: int = 20  # words per image — critical threshold
 
+# Multipage crawl limits. These are intentionally conservative: every audit
+# fans out to at most CRAWL_MAX_PAGES same-site requests, and the whole crawl
+# is bounded by CRAWL_TOTAL_BUDGET_SECONDS.
+MAX_CRAWL_PAGES: int = 10
+MAX_SHARE_PAYLOAD_BYTES: int = 180_000  # compressed base64 URL length guard
+
 
 @dataclass(frozen=True)
 class Settings:
@@ -154,6 +160,35 @@ class Settings:
         default_factory=lambda: int(os.getenv("MAX_HTML_BYTES", str(3_000_000)))
     )
     app_env: str = field(default_factory=lambda: os.getenv("APP_ENV", "development"))
+
+    # Multipage crawl settings.
+    crawl_enabled: bool = field(
+        default_factory=lambda: os.getenv("CRAWL_ENABLED", "true").lower() not in ("0", "false", "no")
+    )
+    crawl_max_pages: int = field(
+        default_factory=lambda: max(1, min(int(os.getenv("CRAWL_MAX_PAGES", "10")), MAX_CRAWL_PAGES))
+    )
+    crawl_concurrency: int = field(
+        default_factory=lambda: max(1, min(int(os.getenv("CRAWL_CONCURRENCY", "3")), 8))
+    )
+    crawl_total_budget_seconds: float = field(
+        default_factory=lambda: float(os.getenv("CRAWL_TOTAL_BUDGET_SECONDS", "15.0"))
+    )
+    crawl_page_timeout_seconds: float = field(
+        default_factory=lambda: float(os.getenv("CRAWL_PAGE_TIMEOUT_SECONDS", "8.0"))
+    )
+    crawl_max_discovered_links: int = field(
+        default_factory=lambda: int(os.getenv("CRAWL_MAX_DISCOVERED_LINKS", "200"))
+    )
+    crawl_include_subdomains: bool = field(
+        default_factory=lambda: os.getenv("CRAWL_INCLUDE_SUBDOMAINS", "false").lower() in ("1", "true", "yes")
+    )
+    crawl_llm_max_pages: int = field(
+        default_factory=lambda: max(1, int(os.getenv("CRAWL_LLM_MAX_PAGES", "2")))
+    )
+    homepage_weight: float = field(
+        default_factory=lambda: max(0.1, float(os.getenv("HOMEPAGE_WEIGHT", "2.0")))
+    )
 
     @property
     def llm_enabled(self) -> bool:

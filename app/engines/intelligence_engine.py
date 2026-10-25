@@ -1,15 +1,20 @@
 """Intelligence (semantic) engine: hybrid LLM scoring with deterministic fallback.
 
-When ``GROQ_API_KEY`` is set the LLM scores query coverage and citation
-snippet quality; otherwise deterministic heuristics run so the audit
-always completes.
+Query Coverage is evaluated once for the site over a combined text corpus.
+Citation Snippet Quality is evaluated per page (LLM for the top pages,
+heuristics for the rest) and aggregated with BEST semantics.
+
+When ``GROQ_API_KEY`` is set the LLM scores these checks; otherwise
+deterministic heuristics run so the audit always completes.
 """
 from __future__ import annotations
 
+import hashlib
 import re
 
+from app.checks import build_check
 from app.config import CATEGORY_META
-from app.models import AuditSection, EffortLevel, Finding, ImpactLevel, Severity
+from app.models import AuditSection, CheckStatus, EffortLevel, ImpactLevel, Severity
 from app.services import llm_service
 from app.services.html_utils import ParsedPage
 
@@ -19,6 +24,12 @@ _DIMENSION_LABELS = {
     "who": "Who it is for",
     "problem": "What problem it solves",
     "outcome": "What measurable outcome it delivers",
+}
+_DIMENSION_CHECK_IDS = {
+    "what": "query.what",
+    "who": "query.who",
+    "problem": "query.problem",
+    "outcome": "query.outcome",
 }
 _POINTS_PER_DIMENSION = 3.75
 
@@ -37,10 +48,11 @@ _PROBLEM_KEYWORDS = (
 )
 
 
-def _build_query_coverage_prompt(page_text: str) -> str:
+def _build_query_coverage_prompt(page_text: str, page_count: int = 1) -> str:
     truncated = page_text[:6000]
-    return f"""You are auditing a company homepage for AI-search answer readiness.
-Using ONLY the text provided below, evaluate whether it clearly answers four questions.
+    return f"""You are auditing a company's website content for AI-search answer readiness.
+The text below is sampled from {page_count} page(s) of the site, separated by [PAGE: url] markers.
+Using ONLY the text provided, evaluate whether the site clearly answers four questions.
 Do not infer anything not stated in the text. If uncertain, score 0.
 
 For each dimension, return a score of 0 or 1 (1 = clearly answered in the text, 0 = not answered),
@@ -60,7 +72,7 @@ Return ONLY this JSON structure, no other text:
   }}
 }}
 
-PAGE TEXT:
+SITE TEXT:
 {truncated}
 """
 
@@ -85,9 +97,13 @@ def _fallback_query_coverage(page_text: str) -> dict:
     }
 
 
-async def score_query_coverage(
-    parsed: ParsedPage, final_url: str, llm_enabled: bool = False
+async def score_query_coverage_site(
+    site_text: str,
+    final_url: str,
+    page_count: int = 1,
+    llm_enabled: bool = False,
 ) -> AuditSection:
+    """Evaluate the four site-level query dimensions over a text corpus."""
     meta = CATEGORY_META["query_coverage"]
     section = AuditSection(
         key="query_coverage",
@@ -99,18 +115,19 @@ async def score_query_coverage(
     llm_used = False
     result_data: dict | None = None
 
-    if llm_enabled and llm_service.is_available():
-        prompt = _build_query_coverage_prompt(parsed.visible_text)
-        llm_result = await llm_service.get_json_completion(final_url, "query_coverage", prompt)
+    if llm_enabled and llm_service.is_available() and site_text.strip():
+        prompt = _build_query_coverage_prompt(site_text, page_count=page_count)
+        digest = hashlib.sha1(site_text.encode("utf-8", errors="ignore")).hexdigest()[:12]
+        cache_url = f"{final_url}#site-{digest}"
+        llm_result = await llm_service.get_json_completion(cache_url, "query_coverage", prompt)
         if llm_result.ok and isinstance(llm_result.data, dict):
             result_data = llm_result.data
             llm_used = True
 
     if result_data is None:
-        result_data = _fallback_query_coverage(parsed.visible_text)
+        result_data = _fallback_query_coverage(site_text)
 
     evidence_map = result_data.get("evidence", {}) if isinstance(result_data.get("evidence"), dict) else {}
-    total_points = 0.0
 
     for dimension in _DIMENSIONS:
         raw_score = result_data.get(dimension, 0)
@@ -118,20 +135,21 @@ async def score_query_coverage(
             answered = bool(int(raw_score))
         except (TypeError, ValueError):
             answered = bool(raw_score)
-        points = _POINTS_PER_DIMENSION if answered else 0.0
-        total_points += points
 
-        section.findings.append(
-            Finding(
-                category="query_coverage",
-                dimension=dimension,
+        section.add_check(
+            build_check(
+                _DIMENSION_CHECK_IDS[dimension],
+                status=CheckStatus.PASS if answered else CheckStatus.FAIL,
                 severity=Severity.PASS if answered else Severity.WARNING,
-                title=f"{_DIMENSION_LABELS[dimension]}: {'answered' if answered else 'not clearly answered'}",
+                title=(
+                    f"{_DIMENSION_LABELS[dimension]}: "
+                    f"{'answered' if answered else 'not clearly answered'}"
+                ),
                 why_it_matters=(
                     "AI systems assemble answers from pages that clearly cover these four "
-                    "fundamentals. Missing any one makes the page a weaker citation candidate."
+                    "fundamentals. Missing any one makes the site a weaker citation candidate."
                 ),
-                evidence=evidence_map.get(dimension) or "No clear evidence found in page text.",
+                evidence=evidence_map.get(dimension) or "No clear evidence found in site text.",
                 recommendation=(
                     "No action needed."
                     if answered
@@ -139,14 +157,23 @@ async def score_query_coverage(
                 ),
                 impact=ImpactLevel.HIGH if not answered else ImpactLevel.LOW,
                 effort=EffortLevel.MEDIUM,
-                points_awarded=points,
-                points_possible=_POINTS_PER_DIMENSION,
+                dimension=dimension,
+                llm_enhanced=llm_used,
+                metrics={"pages_sampled": page_count},
             )
         )
 
-    section.points_awarded = total_points
     section.llm_enhanced = llm_used
     return section
+
+
+async def score_query_coverage(
+    parsed: ParsedPage, final_url: str, llm_enabled: bool = False
+) -> AuditSection:
+    """Single-page wrapper kept for backwards compatibility and tests."""
+    return await score_query_coverage_site(
+        parsed.visible_text, final_url, page_count=1, llm_enabled=llm_enabled
+    )
 
 
 def _build_citation_prompt(candidate_paragraph: str, page_text: str) -> str:
@@ -177,7 +204,10 @@ def _fallback_citation_quality(candidate_paragraph: str | None) -> tuple[bool, s
 
 
 async def score_citation_snippet_quality(
-    parsed: ParsedPage, final_url: str, llm_enabled: bool = False
+    parsed: ParsedPage,
+    final_url: str,
+    llm_enabled: bool = False,
+    page_url: str | None = None,
 ) -> AuditSection:
     meta = CATEGORY_META["ai_citation_snippet_quality"]
     section = AuditSection(
@@ -207,13 +237,10 @@ async def score_citation_snippet_quality(
     else:
         is_strong, reason = _fallback_citation_quality(candidate)
 
-    points = 10.0 if is_strong else 0.0
-    section.points_awarded = points
-    section.llm_enhanced = llm_used
-    section.findings.append(
-        Finding(
-            category="ai_citation_snippet_quality",
-            dimension=None,
+    section.add_check(
+        build_check(
+            "citation.snippet",
+            status=CheckStatus.PASS if is_strong else CheckStatus.FAIL,
             severity=Severity.PASS if is_strong else Severity.WARNING,
             title=(
                 "Found a strong, citation-ready snippet"
@@ -241,8 +268,9 @@ async def score_citation_snippet_quality(
             ),
             impact=ImpactLevel.HIGH,
             effort=EffortLevel.LOW,
-            points_awarded=points,
-            points_possible=10,
+            page_url=page_url,
+            llm_enhanced=llm_used,
         )
     )
+    section.llm_enhanced = llm_used
     return section

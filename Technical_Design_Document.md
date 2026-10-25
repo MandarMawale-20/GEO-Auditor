@@ -51,11 +51,23 @@ The initial draft summed to 110 points. I rebalanced it to a strict **100-point 
 
 ### Grade Scale
 
-* **A (90–100):** Excellent AI answerability
-* **B (80–89):** Strong AI visibility
-* **C (70–79):** Moderate visibility
-* **D (60–69):** Weak visibility
-* **F (<60):** High risk of AI invisibility
+* **A (85–100):** Excellent AI answerability
+* **B (70–84):** Strong AI visibility
+* **C (55–69):** Moderate / partial visibility
+* **D (40–54):** Weak AI visibility
+* **F (<40):** High risk of AI invisibility
+
+### Check-Based Scoring
+
+The original implementation awarded points directly from each engine section. That made it easy for a presentation change to drift away from the score. The current model makes `CheckResult` the only scoring object:
+
+* Each of the 10 categories is composed of one or more stable checks (`app/checks.py`, 21 total).
+* A section's points are the sum of its checks; `total_score` is the sum of section points.
+* Findings are generated from checks for presentation, not used as a second scoring path.
+* Checks have explicit `pass`, `partial`, `fail`, `not_applicable`, and `unknown` statuses. Unknown is never converted into failure.
+* `scoring_version` is stored on the report. Legacy payloads still decode with the v1 defaults.
+
+For multipage audits, each check declares one aggregation strategy: `SITE_SINGLETON`, `BEST`, `COVERAGE`, `SITE_CORPUS`, `CONSISTENCY`, or `LATEST`. Coverage excludes `NOT_APPLICABLE` and `UNKNOWN` pages from the denominator, weights the homepage 2× and internal pages 1×, and discloses the evaluated points plus per-check uncertainty. A single-page audit is a strict parity mode: the page check becomes the site check unchanged.
 
 ### Important Distinction
 
@@ -71,7 +83,7 @@ Given the limited time available, I focused on a reliable MVP and made several d
 * No database
 * No background job system
 * No headless browser
-* Single-page auditing
+* Bounded same-site multipage crawl (opt-in, 1–10 pages)
 * Optional LLM usage
 * Local-first execution
 
@@ -85,11 +97,12 @@ GEO Auditor is built with **FastAPI**, **httpx**, **BeautifulSoup**, **Pydantic*
 
 ### Core Flow
 
-1. Fetch page HTML, `robots.txt`, and `sitemap.xml` concurrently.
+1. Fetch page HTML and `robots.txt` concurrently, then discover `sitemap.xml` (including robots.txt hints).
 2. Parse the HTML once.
-3. Run independent scoring engines.
-4. Aggregate results into a single audit model.
-5. Generate both HTML and PDF reports.
+3. Run independent scoring engines for the homepage.
+4. For `pages>1`, build a deterministic crawl plan from homepage links and sitemap URLs, filter by same-host scope/robots.txt/assets/queries, fetch under a shared monotonic deadline, and audit each page in isolation.
+5. Aggregate per-page checks and site-level checks into the 10 frozen sections.
+6. Generate both HTML and PDF reports.
 
 ### Hybrid Deterministic + LLM Design
 
@@ -109,13 +122,22 @@ I treated the report as the main product. Every finding is evidence-backed, writ
 
 I tested the system against public websites with different structures, including corporate sites, SaaS sites, content sites, and JavaScript-heavy pages. I also verified PDF export quality and fallback behavior when no LLM credentials were configured.
 
----
+The repository now includes a regression suite (`python -m pytest -q`) covering:
+
+* check-registry weight invariants (21 checks, 100 possible points)
+* single-page parity (aggregated status/title/points match the page check)
+* coverage weights, not-applicable exclusion, and unknown-never-failure behavior
+* Organization-schema consistency (no carrier, one carrier, matching, conflicting)
+* robots.txt Allow/Disallow longest-match and wildcard rules
+* crawl host scope, canonical validation, budget/timeout distinction, and outage isolation
+* legacy share-payload decoding and new report round-trips
+* PDF and standalone HTML exports
 
 ## 9. What I Would Build Next
 
 With additional time, I would add:
 
-1. Multi-page crawling
+1. Recursive crawling with depth limits
 2. Historical audit tracking
 3. Competitive benchmarking
 4. Headless rendering fallback

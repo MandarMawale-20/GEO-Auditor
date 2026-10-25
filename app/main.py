@@ -22,9 +22,9 @@ from slowapi.util import get_remote_address
 from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app.config import settings
+from app.config import MAX_CRAWL_PAGES, MAX_SHARE_PAYLOAD_BYTES, settings
 from app.models import AuditReport
-from app.orchestrator import run_audit
+from app.orchestrator import SCORING_VERSION, run_audit
 from app.scoring import validate_total_weight
 from app.services.http_client import shutdown_http_client, startup_http_client
 from app.services.pdf_service import generate_pdf_bytes
@@ -188,6 +188,9 @@ async def health() -> JSONResponse:
             "status": "ok",
             "version": "1.0.0",
             "llm_enabled": settings.llm_enabled,
+            "crawl_enabled": settings.crawl_enabled,
+            "max_pages": settings.crawl_max_pages,
+            "scoring_version": SCORING_VERSION,
         }
     )
 
@@ -203,10 +206,13 @@ async def audit_form(
     request: Request,
     url: str = Form(...),
     llm_enhanced: str | None = Form(default=None),
+    pages: int = Form(default=1),
 ) -> RedirectResponse:
     """Legacy HTML form POST — delegates to the JSON runner then redirects."""
     use_llm = llm_enhanced == "on"
-    report, err = await execute_and_cache_audit(url, use_llm=use_llm)
+    report, err = await execute_and_cache_audit(
+        url, use_llm=use_llm, pages=max(1, min(pages, MAX_CRAWL_PAGES))
+    )
     if err:
         raise HTTPException(status_code=400, detail=err)
 
@@ -218,14 +224,14 @@ async def audit_form(
 
 
 async def execute_and_cache_audit(
-    url: str, use_llm: bool = False
+    url: str, use_llm: bool = False, pages: int = 1
 ) -> tuple[AuditReport | None, str | None]:
     """Validate, run, cache. Returns (report, error)."""
     normalized, err = await normalize_and_validate(url)
     if err:
         return None, err
 
-    report = await run_audit(normalized, llm_enabled=use_llm)
+    report = await run_audit(normalized, llm_enabled=use_llm, max_pages=pages)
 
     if report.report_id:
         REPORT_CACHE[report.report_id] = report
@@ -260,13 +266,17 @@ async def audit_api(
     request: Request,
     url: str = Query(..., min_length=1, max_length=2048),
     llm_enhanced: bool = Query(default=False),
+    pages: int = Query(default=1, ge=1, le=MAX_CRAWL_PAGES),
 ) -> JSONResponse:
     """JSON API for the static frontend.
 
-    Returns the full report plus an absolute share_url that contains the
-    encoded report in its hash fragment (no database).
+    Single-page auditing is the default. Pass ``pages=2..10`` to opt into a
+    bounded same-site crawl. Returns the full report plus an absolute
+    ``share_url`` that contains the encoded report in its hash fragment.
     """
-    report, err = await execute_and_cache_audit(url, use_llm=llm_enhanced)
+    report, err = await execute_and_cache_audit(
+        url, use_llm=llm_enhanced, pages=pages
+    )
     if err:
         raise HTTPException(status_code=400, detail=err)
     if report is None:
@@ -351,10 +361,43 @@ async def sample_report(report_id: str) -> HTMLResponse:
 
 
 def encode_report_for_share(report: AuditReport) -> str:
-    """Serialize a report, gzip it, and base64url-encode it for a URL hash."""
-    payload = json.dumps(report.model_dump(), separators=(",", ":"), default=str).encode("utf-8")
-    compressed = gzip.compress(payload, compresslevel=9)
-    return base64.urlsafe_b64encode(compressed).rstrip(b"=").decode("ascii")
+    """Serialize a report, gzip it, and base64url-encode it for a URL hash.
+
+    Share URLs live in the address bar, so payloads are guarded by a size
+    cap. If the full report is too large, presentation-only duplicates are
+    dropped first (``all_findings`` can be rebuilt from ``sections``), then
+    the per-page summary list. Scoring data and section findings always stay.
+    """
+    candidates = [report]
+
+    compact = report.model_copy(deep=True)
+    compact.all_findings = []
+    compact.priority_roadmap = []
+    compact.top_priorities = []
+    candidates.append(compact)
+
+    minimal = compact.model_copy(deep=True)
+    minimal.pages = []
+    minimal.crawl_stats = {}
+    candidates.append(minimal)
+
+    encoded = ""
+    for candidate in candidates:
+        payload = json.dumps(
+            candidate.model_dump(), separators=(",", ":"), default=str
+        ).encode("utf-8")
+        compressed = gzip.compress(payload, compresslevel=9)
+        encoded = base64.urlsafe_b64encode(compressed).rstrip(b"=").decode("ascii")
+        if len(encoded) <= MAX_SHARE_PAYLOAD_BYTES:
+            return encoded
+
+    logger.warning(
+        "Share payload for report %s is %s chars (cap %s); keeping minimal form.",
+        report.report_id,
+        len(encoded),
+        MAX_SHARE_PAYLOAD_BYTES,
+    )
+    return encoded
 
 
 @app.get("/report/share", response_class=HTMLResponse)

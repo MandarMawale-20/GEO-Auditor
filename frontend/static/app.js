@@ -35,6 +35,38 @@
     return max ? Math.round((report.total_score / max) * 100) : 0;
   }
 
+  // New reports include all_findings; compact share payloads may omit it.
+  // Section findings are the canonical projection, so reconstruct when needed.
+  function allFindings(report) {
+    if (Array.isArray(report.all_findings) && report.all_findings.length) {
+      return report.all_findings;
+    }
+    const findings = [];
+    (report.sections || []).forEach(function (section) {
+      (section.findings || []).forEach(function (f) { findings.push(f); });
+    });
+    return findings;
+  }
+
+  function scopeLabel(report) {
+    if (report.audit_scope === "site") {
+      const n = report.pages_audited || (report.pages || []).length || 1;
+      return "Site audit · " + n + (n === 1 ? " page" : " pages");
+    }
+    return "Audited URL";
+  }
+
+  function pageCountText(f) {
+    if (f.pages_total != null && f.pages_total > 1) {
+      const bits = [];
+      if (f.pages_passed != null) bits.push(f.pages_passed + " pass");
+      if (f.pages_failed != null) bits.push(f.pages_failed + " fail");
+      if (f.pages_unknown != null) bits.push(f.pages_unknown + " unknown");
+      return (bits.length ? bits.join(" · ") + " · " : "") + f.pages_total + " pages";
+    }
+    return "";
+  }
+
   function formatDate(iso) {
     if (!iso) return "Unknown";
     const d = new Date(iso);
@@ -50,12 +82,13 @@
   }
 
   function findingCard(f) {
+    const pages = pageCountText(f);
     return (
       '<div class="finding ' + f.severity + '">' +
         '<div class="finding-header">' +
           severityBadge(f.severity) +
           '<h3 class="finding-title">' + esc(f.title) + "</h3>" +
-          '<div class="finding-meta">Impact: ' + esc(f.impact) + "</div>" +
+          '<div class="finding-meta">Impact: ' + esc(f.impact) + (pages ? " · " + esc(pages) : "") + "</div>" +
         "</div>" +
         '<div class="finding-body">' +
           '<div class="why-it-matters">' + esc(f.why_it_matters) + "</div>" +
@@ -97,6 +130,7 @@
 
   function roadmapItem(f, idx) {
     const dotClass = f.severity === "critical" ? "critical" : "warning";
+    const pages = pageCountText(f);
     return (
       '<div class="roadmap-item">' +
         '<div class="roadmap-dot ' + dotClass + '">' + idx + "</div>" +
@@ -106,7 +140,7 @@
               severityBadge(f.severity) +
               '<h3 class="roadmap-item-title">' + esc(f.title) + "</h3>" +
             "</div>" +
-            '<div class="finding-meta">Impact: ' + esc(f.impact) + " · Effort: " + esc(f.effort) + "</div>" +
+            '<div class="finding-meta">Impact: ' + esc(f.impact) + " · Effort: " + esc(f.effort) + (pages ? " · " + esc(pages) : "") + "</div>" +
           "</div>" +
           '<p class="muted" style="font-size:0.85rem; margin-bottom:0.5rem;"><span style="color:var(--text);">Why it matters:</span> ' + esc(f.why_it_matters) + "</p>" +
           "<details><summary>Evidence</summary><div class=\"evidence\">" + esc(f.evidence) + "</div></details>" +
@@ -154,11 +188,15 @@
     const reportId = report.report_id;
     const circleOffset = 276.46 * (1 - pct / 100);
 
-    const findings = report.all_findings || [];
+    const findings = allFindings(report);
     const criticalCount = findings.filter((f) => f.severity === "critical").length;
     const warningCount = findings.filter((f) => f.severity === "warning").length;
     const passCount = findings.filter((f) => f.severity === "pass").length;
     const sectionCount = (report.sections || []).length;
+    const pages = Array.isArray(report.pages) ? report.pages : [];
+    const pagesAudited = report.pages_audited != null ? report.pages_audited : (pages.length || 1);
+    const pointsEvaluated = report.points_evaluated != null ? report.points_evaluated : report.max_score;
+    const isPartial = !!report.partial || pointsEvaluated < (report.max_score || 100);
 
     const summaryLines = [];
     for (const s of report.sections || []) {
@@ -175,7 +213,10 @@
 
     const shareUrl = (window.location.hash || "").replace(/^#/, "");
 
-    const topPrioritiesHtml = (report.top_priorities || []).map(findingCard).join("");
+    const topPriorities = (report.top_priorities && report.top_priorities.length)
+      ? report.top_priorities
+      : findings.filter(function (f) { return f.severity === "critical" || f.severity === "warning"; }).slice(0, 3);
+    const topPrioritiesHtml = topPriorities.map(findingCard).join("");
 
     const sectionsHtml = (report.sections || [])
       .map(function (section, i) {
@@ -227,9 +268,11 @@
         "</tbody></table></div></section>"
       : "";
 
-    const roadmapFindings = findings.filter(function (f) {
-      return f.severity === "critical" || f.severity === "warning";
-    });
+    const roadmapFindings = (report.priority_roadmap && report.priority_roadmap.length)
+      ? report.priority_roadmap
+      : findings.filter(function (f) {
+          return f.severity === "critical" || f.severity === "warning";
+        });
     const roadmapHtml = roadmapFindings.length
       ? '<section class="reveal" style="margin-bottom:2.5rem;">' +
         "<h2>Priority roadmap</h2>" +
@@ -270,12 +313,46 @@
       ? '<div class="banner banner-warning" style="margin-bottom:2rem;"><span class="banner-icon">⚠</span><div class="banner-content"><div class="banner-title">AI analysis unavailable</div><div class="banner-text">' + esc(report.llm_error) + "</div></div></div>"
       : "";
 
+    const partialHtml = isPartial
+      ? '<div class="banner banner-warning" style="margin-bottom:2rem;"><span class="banner-icon">◐</span><div class="banner-content"><div class="banner-title">Partial coverage</div><div class="banner-text">This score evaluates <strong>' + formatNum(pointsEvaluated) + " of " + esc(report.max_score || 100) + " possible points</strong>. Unknown or unreachable checks are disclosed, not counted as failures. " +
+        (report.crawl_stats && report.crawl_stats.failed ? esc(report.crawl_stats.failed) + " page(s) could not be audited. " : "") +
+        (report.pages_discovered ? "Discovered " + esc(report.pages_discovered) + " internal candidate pages. " : "") +
+        "</div></div></div>"
+      : "";
+
+    const pagesHtml = report.audit_scope === "site" && pages.length
+      ? '<section class="reveal" style="margin-bottom:2.5rem;"><h2>Audited pages</h2>' +
+        '<p class="muted" style="margin-bottom:1rem; font-size:0.9rem;">Homepage counts double in coverage checks. Internal pages are selected deterministically from links and the sitemap.</p>' +
+        '<div class="audit-table" style="margin:0;"><table style="width:100%; border-collapse:collapse;">' +
+        "<thead><tr>" +
+        '<th style="text-align:left; padding:0.6rem 0.75rem; color:var(--text-muted); font-family:var(--font-mono); font-size:0.7rem; font-weight:600; text-transform:uppercase; letter-spacing:0.06em;">Page</th>' +
+        '<th style="text-align:left; padding:0.6rem 0.75rem; color:var(--text-muted); font-family:var(--font-mono); font-size:0.7rem; font-weight:600; text-transform:uppercase; letter-spacing:0.06em;">Role</th>' +
+        '<th style="text-align:left; padding:0.6rem 0.75rem; color:var(--text-muted); font-family:var(--font-mono); font-size:0.7rem; font-weight:600; text-transform:uppercase; letter-spacing:0.06em;">Page checks</th>' +
+        '<th style="text-align:left; padding:0.6rem 0.75rem; color:var(--text-muted); font-family:var(--font-mono); font-size:0.7rem; font-weight:600; text-transform:uppercase; letter-spacing:0.06em;">Status</th>' +
+        "</tr></thead><tbody>" +
+        pages.map(function (p) {
+          const status = p.error
+            ? (p.error === "noindex_excluded" ? "Excluded (noindex)" : "Not evaluated: " + p.error)
+            : "Audited";
+          const color = p.error ? "var(--warning)" : "var(--success)";
+          return "<tr style=\"border-bottom:1px solid var(--border-soft);\">" +
+            '<td style="padding:0.55rem 0.75rem; max-width:32rem; overflow-wrap:anywhere;"><a href="' + esc(p.final_url || p.url) + '" target="_blank" rel="noopener">' + esc(p.final_url || p.url) + "</a>" +
+              (p.selected_reason ? '<div class="muted" style="font-size:0.74rem;">' + esc(p.selected_reason) + "</div>" : "") +
+            "</td>" +
+            '<td style="padding:0.55rem 0.75rem; font-size:0.82rem;">' + esc(p.role || "internal") + "</td>" +
+            '<td style="padding:0.55rem 0.75rem; font-family:var(--font-mono); font-size:0.8rem;">' + formatNum(p.points_awarded) + " / " + formatNum(p.points_possible) + "</td>" +
+            '<td style="padding:0.55rem 0.75rem; font-size:0.82rem; color:' + color + ';">' + esc(status) + "</td>" +
+          "</tr>";
+        }).join("") +
+        "</tbody></table></div></section>"
+      : "";
+
     const html =
       actionsHtml +
       '<div style="padding-top:2.5rem;">' +
         '<div class="report-header anim-in" style="margin-bottom:2rem;">' +
           '<div class="report-header-inner"><div>' +
-            '<span class="report-label">Audited URL</span>' +
+            '<span class="report-label">' + esc(scopeLabel(report)) + "</span>" +
             '<div class="report-url">' + esc(finalUrl) + "</div>" +
           "</div><div class=\"stat-value-container\">" +
             '<span class="report-label">Score</span>' +
@@ -312,19 +389,27 @@
             '<div class="banner-text">This audit measures <strong>on-page GEO readiness</strong>. Large brands may receive lower scores than their real-world AI visibility because off-page authority signals (Wikipedia, Knowledge Graph, backlinks, brand mentions) are intentionally excluded from this scoring model.</div>' +
             "</div></div>" +
           llmErrorHtml +
+          partialHtml +
           '<div class="stats-row reveal" style="margin-bottom:2.5rem;">' +
             '<div class="stat-item"><div class="stat-value">' + sectionCount + '</div><div class="stat-label">Categories</div></div>' +
+            (report.audit_scope === "site" || pagesAudited > 1
+              ? '<div class="stat-item"><div class="stat-value">' + pagesAudited + '</div><div class="stat-label">Pages</div></div>'
+              : "") +
+            (report.audit_scope === "site" || isPartial
+              ? '<div class="stat-item"><div class="stat-value">' + formatNum(pointsEvaluated) + '</div><div class="stat-label">Points evaluated</div></div>'
+              : "") +
             '<div class="stat-item"><div class="stat-value" style="color:var(--danger);">' + criticalCount + '</div><div class="stat-label">Critical</div></div>' +
             '<div class="stat-item"><div class="stat-value" style="color:var(--warning);">' + warningCount + '</div><div class="stat-label">Warnings</div></div>' +
             '<div class="stat-item"><div class="stat-value" style="color:var(--success);">' + passCount + '</div><div class="stat-label">Passing</div></div>' +
           "</div>" +
         "</section>" +
-        (report.top_priorities && report.top_priorities.length
+        (topPriorities.length
           ? '<section class="reveal" style="margin-bottom:2.5rem;"><h2>Top 3 priorities for Monday morning</h2><p class="muted" style="margin-bottom:1.25rem; font-size:0.9rem;">Highest impact, lowest effort. Fix these first.</p><div class="grid-2">' + topPrioritiesHtml + "</div></section>"
           : "") +
         '<section class="reveal" style="margin-bottom:2.5rem;"><h2>Score breakdown</h2>' +
           '<p class="muted" style="margin-bottom:1.25rem; font-size:0.9rem;">10 categories across ' + report.max_score + " possible points.</p>" +
           '<div style="display:flex; flex-direction:column; gap:0.5rem;">' + sectionsHtml + "</div></section>" +
+        pagesHtml +
         matrixHtml +
         roadmapHtml +
         passingHtml +
@@ -507,9 +592,12 @@
       submitBtn.innerHTML = '<span class="spinner"></span><span>Auditing…</span>';
 
       try {
+        const pagesInput = document.getElementById("pages");
+        const pagesValue = pagesInput && pagesInput.value ? pagesInput.value : "1";
         const params = new URLSearchParams({
           url: urlValue,
           llm_enhanced: llmChecked ? "true" : "false",
+          pages: pagesValue,
         });
         const resp = await fetch(API_BASE + "/api/audit?" + params.toString(), { method: "GET" });
         if (resp.ok) {

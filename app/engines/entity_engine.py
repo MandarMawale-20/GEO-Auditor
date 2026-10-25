@@ -6,10 +6,12 @@ default headers, response-size limits).
 from __future__ import annotations
 
 import asyncio
+import json
 from urllib.parse import urljoin
 
+from app.checks import build_check
 from app.config import CATEGORY_META, TRUSTED_SAMEAS_DOMAINS, settings
-from app.models import AuditSection, EffortLevel, Finding, ImpactLevel, Severity
+from app.models import AuditSection, CheckStatus, EffortLevel, ImpactLevel, Severity
 from app.services.html_utils import (
     ParsedPage,
     extract_sameas,
@@ -20,7 +22,18 @@ from app.services.http_client import safe_head_or_get
 ORG_TYPES = ("Organization", "Corporation", "LocalBusiness", "Product", "SoftwareApplication")
 
 
-def score_structured_entity_data(parsed: ParsedPage) -> AuditSection:
+def _identity_fingerprint(entity: dict) -> str:
+    """Stable fingerprint of the core identity fields used for consistency."""
+    core = {
+        "name": str(entity.get("name") or "").strip().lower(),
+        "url": str(entity.get("url") or "").strip().rstrip("/").lower(),
+        "logo": str(entity.get("logo") or "").strip().lower(),
+        "sameAs": sorted(extract_sameas(entity)),
+    }
+    return json.dumps(core, sort_keys=True)
+
+
+def score_structured_entity_data(parsed: ParsedPage, page_url: str | None = None) -> AuditSection:
     meta = CATEGORY_META["structured_entity_data"]
     section = AuditSection(
         key="structured_entity_data",
@@ -32,11 +45,10 @@ def score_structured_entity_data(parsed: ParsedPage) -> AuditSection:
     entities = find_entities_by_type(parsed.json_ld_blocks, ORG_TYPES)
 
     if not entities:
-        section.points_awarded = 0
-        section.findings.append(
-            Finding(
-                category="structured_entity_data",
-                dimension=None,
+        section.add_check(
+            build_check(
+                "entity.org_schema",
+                status=CheckStatus.FAIL,
                 severity=Severity.CRITICAL,
                 title="No Organization or Product JSON-LD found",
                 why_it_matters=(
@@ -64,14 +76,14 @@ def score_structured_entity_data(parsed: ParsedPage) -> AuditSection:
                 ),
                 impact=ImpactLevel.HIGH,
                 effort=EffortLevel.LOW,
-                points_awarded=0,
-                points_possible=7,
+                page_url=page_url,
+                metrics={"entity_present": False},
             )
         )
-        section.findings.append(
-            Finding(
-                category="structured_entity_data",
-                dimension=None,
+        section.add_check(
+            build_check(
+                "entity.same_as_trusted",
+                status=CheckStatus.FAIL,
                 severity=Severity.CRITICAL,
                 title="No sameAs links (no JSON-LD entity to check)",
                 why_it_matters="sameAs links let AI systems cross-reference your entity against trusted knowledge graphs.",
@@ -79,17 +91,17 @@ def score_structured_entity_data(parsed: ParsedPage) -> AuditSection:
                 recommendation="Add the Organization JSON-LD above, including a sameAs array.",
                 impact=ImpactLevel.MEDIUM,
                 effort=EffortLevel.LOW,
-                points_awarded=0,
-                points_possible=3,
+                page_url=page_url,
+                metrics={"entity_present": False},
             )
         )
         return section
 
     entity = entities[0]
-    section.findings.append(
-        Finding(
-            category="structured_entity_data",
-            dimension=None,
+    section.add_check(
+        build_check(
+            "entity.org_schema",
+            status=CheckStatus.PASS,
             severity=Severity.PASS,
             title=f"Valid {entity.get('@type', 'Organization')} JSON-LD found",
             why_it_matters="Structured entity data gives AI systems a machine-readable identity to cite confidently.",
@@ -97,8 +109,13 @@ def score_structured_entity_data(parsed: ParsedPage) -> AuditSection:
             recommendation="No action needed.",
             impact=ImpactLevel.LOW,
             effort=EffortLevel.LOW,
-            points_awarded=7,
-            points_possible=7,
+            page_url=page_url,
+            metrics={
+                "entity_present": True,
+                "fingerprint": _identity_fingerprint(entity),
+                "entity_type": str(entity.get("@type") or ""),
+                "entity_name": str(entity.get("name") or ""),
+            },
         )
     )
 
@@ -110,10 +127,10 @@ def score_structured_entity_data(parsed: ParsedPage) -> AuditSection:
     ]
 
     if trusted_links:
-        section.findings.append(
-            Finding(
-                category="structured_entity_data",
-                dimension=None,
+        section.add_check(
+            build_check(
+                "entity.same_as_trusted",
+                status=CheckStatus.PASS,
                 severity=Severity.PASS,
                 title="sameAs links point to trusted knowledge sources",
                 why_it_matters="sameAs links let AI systems verify your entity against Wikipedia, LinkedIn, Crunchbase, etc.",
@@ -121,16 +138,15 @@ def score_structured_entity_data(parsed: ParsedPage) -> AuditSection:
                 recommendation="No action needed.",
                 impact=ImpactLevel.LOW,
                 effort=EffortLevel.LOW,
-                points_awarded=3,
-                points_possible=3,
+                page_url=page_url,
+                metrics={"entity_present": True},
             )
         )
-        section.points_awarded = 10
     else:
-        section.findings.append(
-            Finding(
-                category="structured_entity_data",
-                dimension=None,
+        section.add_check(
+            build_check(
+                "entity.same_as_trusted",
+                status=CheckStatus.FAIL,
                 severity=Severity.WARNING,
                 title="No sameAs links to trusted sources",
                 why_it_matters="Without sameAs links, AI systems have no independent way to verify your entity's identity.",
@@ -139,12 +155,74 @@ def score_structured_entity_data(parsed: ParsedPage) -> AuditSection:
                 copy_paste_fix='"sameAs": ["https://www.linkedin.com/company/yourcompany", "https://www.crunchbase.com/organization/yourcompany"]',
                 impact=ImpactLevel.MEDIUM,
                 effort=EffortLevel.LOW,
-                points_awarded=0,
-                points_possible=3,
+                page_url=page_url,
+                metrics={"entity_present": True},
             )
         )
-        section.points_awarded = 7
 
+    return section
+
+
+def score_entity_required_fields(parsed: ParsedPage, page_url: str | None = None) -> AuditSection:
+    """Required Organization fields (name/logo/description) for one page."""
+    meta = CATEGORY_META["entity_completeness_trust"]
+    section = AuditSection(
+        key="entity_completeness_trust",
+        label=meta["label"],
+        group=meta["group"],
+        points_possible=5,
+    )
+
+    entities = find_entities_by_type(parsed.json_ld_blocks, ORG_TYPES)
+    if not entities:
+        section.add_check(
+            build_check(
+                "entity.required_fields",
+                status=CheckStatus.NOT_APPLICABLE,
+                severity=Severity.WARNING,
+                title="No Organization schema on this page",
+                why_it_matters=(
+                    "AI systems use name/logo/description as baseline entity confidence signals "
+                    "before deciding whether to cite a source."
+                ),
+                evidence="No Organization entity found on this page.",
+                recommendation="Add Organization JSON-LD with name, logo, and description.",
+                impact=ImpactLevel.MEDIUM,
+                effort=EffortLevel.LOW,
+                page_url=page_url,
+                metrics={"entity_present": False},
+            )
+        )
+        return section
+
+    entity = entities[0]
+    required_fields = ("name", "logo", "description")
+    present_fields = [f for f in required_fields if entity.get(f)]
+    missing_fields = [f for f in required_fields if f not in present_fields]
+    ok = len(present_fields) == len(required_fields)
+
+    section.add_check(
+        build_check(
+            "entity.required_fields",
+            status=CheckStatus.PASS if ok else CheckStatus.FAIL,
+            severity=Severity.PASS if ok else Severity.WARNING,
+            title=(
+                "Organization schema includes name, logo, and description"
+                if ok
+                else f"Organization schema is missing: {', '.join(missing_fields)}"
+            ),
+            why_it_matters=(
+                "AI systems use name/logo/description as baseline entity confidence signals "
+                "before deciding whether to cite a source."
+            ),
+            evidence=f"Present fields: {present_fields or 'none'}. Missing: {missing_fields or 'none'}.",
+            recommendation="Ensure your Organization JSON-LD includes name, logo, and description fields.",
+            impact=ImpactLevel.MEDIUM,
+            effort=EffortLevel.LOW,
+            page_url=page_url,
+            metrics={"entity_present": True},
+        )
+    )
     return section
 
 
@@ -163,44 +241,14 @@ async def _check_page_reachable(base_url: str, href: str | None) -> bool:
     return bool(result.ok and result.status_code is not None and result.status_code < 400)
 
 
-async def score_entity_completeness_trust(parsed: ParsedPage, base_url: str) -> AuditSection:
+async def score_trust_pages(parsed: ParsedPage, base_url: str) -> AuditSection:
+    """Site-level About/Contact reachability check (evaluated once)."""
     meta = CATEGORY_META["entity_completeness_trust"]
     section = AuditSection(
         key="entity_completeness_trust",
         label=meta["label"],
         group=meta["group"],
-        points_possible=10,
-    )
-
-    entities = find_entities_by_type(parsed.json_ld_blocks, ORG_TYPES)
-    entity = entities[0] if entities else {}
-
-    required_fields = ("name", "logo", "description")
-    present_fields = [f for f in required_fields if entity.get(f)]
-    missing_fields = [f for f in required_fields if f not in present_fields]
-
-    schema_points = 5.0 if len(present_fields) == len(required_fields) else 0.0
-    section.findings.append(
-        Finding(
-            category="entity_completeness_trust",
-            dimension=None,
-            severity=Severity.PASS if schema_points else Severity.WARNING,
-            title=(
-                "Organization schema includes name, logo, and description"
-                if schema_points
-                else f"Organization schema is missing: {', '.join(missing_fields) or 'the schema itself'}"
-            ),
-            why_it_matters=(
-                "AI systems use name/logo/description as baseline entity confidence signals "
-                "before deciding whether to cite a source."
-            ),
-            evidence=f"Present fields: {present_fields or 'none'}. Missing: {missing_fields or 'none'}.",
-            recommendation="Ensure your Organization JSON-LD includes name, logo, and description fields.",
-            impact=ImpactLevel.MEDIUM,
-            effort=EffortLevel.LOW,
-            points_awarded=schema_points,
-            points_possible=5,
-        )
+        points_possible=5,
     )
 
     about_href = parsed.about_href
@@ -216,10 +264,10 @@ async def score_entity_completeness_trust(parsed: ParsedPage, base_url: str) -> 
         label for label, ok in (("About", about_ok), ("Contact", contact_ok)) if ok
     ]
 
-    section.findings.append(
-        Finding(
-            category="entity_completeness_trust",
-            dimension=None,
+    section.add_check(
+        build_check(
+            "entity.trust_pages",
+            status=CheckStatus.PASS if trust_points else CheckStatus.FAIL,
             severity=Severity.PASS if trust_points else Severity.WARNING,
             title=(
                 f"Trust pages found: {', '.join(found_pages)}"
@@ -238,9 +286,22 @@ async def score_entity_completeness_trust(parsed: ParsedPage, base_url: str) -> 
             impact=ImpactLevel.MEDIUM,
             effort=EffortLevel.MEDIUM,
             points_awarded=trust_points,
-            points_possible=5,
         )
     )
+    return section
 
-    section.points_awarded = schema_points + trust_points
+
+async def score_entity_completeness_trust(parsed: ParsedPage, base_url: str) -> AuditSection:
+    """Backward-compatible combined section (homepage required fields + trust)."""
+    meta = CATEGORY_META["entity_completeness_trust"]
+    section = AuditSection(
+        key="entity_completeness_trust",
+        label=meta["label"],
+        group=meta["group"],
+        points_possible=10,
+    )
+    fields_section = score_entity_required_fields(parsed)
+    trust_section = await score_trust_pages(parsed, base_url)
+    for check in fields_section.checks + trust_section.checks:
+        section.add_check(check)
     return section

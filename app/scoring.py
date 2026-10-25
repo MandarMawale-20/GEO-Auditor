@@ -33,7 +33,7 @@ def compute_grade(total_score: float) -> tuple[str, str]:
 
 
 def compute_total_score(sections: list[AuditSection]) -> float:
-    return round(sum(s.points_awarded for s in sections), 1)
+    return round(sum(s.points_awarded for s in sections), 2)
 
 
 def collect_findings(sections: list[AuditSection]) -> list[Finding]:
@@ -43,16 +43,50 @@ def collect_findings(sections: list[AuditSection]) -> list[Finding]:
     return findings
 
 
-def build_priority_roadmap(findings: list[Finding]) -> list[Finding]:
-    """Actionable findings sorted by impact-vs-effort priority, worst-first."""
+def _affected_page_importance(finding: Finding, homepage_url: str | None) -> float:
+    """Weight affected pages: homepage 2x, internal 1x.
+
+    Site-wide findings (no per-page list) are treated as affecting the
+    homepage-level experience and therefore use the highest weight.
+    """
+    pages = finding.affected_pages or []
+    if not pages:
+        return 2.0 if (finding.pages_total or 0) > 1 else 1.0
+    home = (homepage_url or "").rstrip("/")
+    return sum(
+        2.0 if home and page.rstrip("/") == home else 1.0
+        for page in pages
+    )
+
+
+def build_priority_roadmap(
+    findings: list[Finding], homepage_url: str | None = None
+) -> list[Finding]:
+    """Actionable findings sorted by a deterministic priority key.
+
+    Impact/effort still leads. Points recoverable is the first tiebreaker;
+    affected-page importance (homepage 2x) follows; ``check_id`` guarantees
+    stable ordering across runs.
+    """
     actionable = [f for f in findings if f.severity in (Severity.CRITICAL, Severity.WARNING)]
-    actionable.sort(key=lambda f: (f.priority_score, f.points_possible - f.points_awarded), reverse=True)
+    actionable.sort(
+        key=lambda f: (
+            -f.priority_score,
+            -(f.points_possible - f.points_awarded),
+            -_affected_page_importance(f, homepage_url),
+            f.check_id or f.title,
+        )
+    )
     return actionable
 
 
-def select_top_priorities(findings: list[Finding], limit: int = 3) -> list[Finding]:
+def select_top_priorities(
+    findings: list[Finding],
+    limit: int = 3,
+    homepage_url: str | None = None,
+) -> list[Finding]:
     """Top N findings for the headline row."""
-    return build_priority_roadmap(findings)[:limit]
+    return build_priority_roadmap(findings, homepage_url)[:limit]
 
 
 def build_answerability_matrix(sections: list[AuditSection], page_text: str) -> list[AnswerabilityRow]:

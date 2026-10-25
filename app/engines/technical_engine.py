@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from app.checks import build_check
 from app.config import (
     AI_CRAWLER_POINTS,
     CATEGORY_META,
@@ -10,11 +11,18 @@ from app.config import (
     LIMITED_TEXT_WORDS,
     SUFFICIENT_TEXT_WORDS,
 )
-from app.models import AuditSection, EffortLevel, Finding, ImpactLevel, Severity
+from app.models import AuditSection, CheckStatus, EffortLevel, ImpactLevel, Severity
 from app.services.html_utils import ParsedPage
 from app.services.robots import RobotsRules
 from app.services.sitemap import SitemapResult
 from app.utils import parse_iso_datetime
+
+_CRAWLER_CHECK_IDS = {
+    "OAI-SearchBot": "crawler.openai_searchbot",
+    "PerplexityBot": "crawler.perplexitybot",
+    "ClaudeBot": "crawler.claudebot",
+    "Googlebot": "crawler.googlebot",
+}
 
 
 def score_ai_crawler_accessibility(robots: RobotsRules) -> AuditSection:
@@ -28,50 +36,48 @@ def score_ai_crawler_accessibility(robots: RobotsRules) -> AuditSection:
 
     if not robots.exists:
         # No robots.txt = nothing is disallowed, so every bot earns full points.
-        section.points_awarded = 15
-        section.findings.append(
-            Finding(
-                category="ai_crawler_accessibility",
-                dimension=None,
-                severity=Severity.INFO,
-                title="No robots.txt found — AI crawlers are unrestricted by default",
-                why_it_matters=(
-                    "Without a robots.txt, all crawlers are implicitly allowed. "
-                    "An explicit robots.txt gives you control and signals intent."
-                ),
-                evidence="robots.txt returned a non-200 response or was unreachable.",
-                recommendation=(
-                    "Add a robots.txt that explicitly allows OAI-SearchBot, PerplexityBot, "
-                    "ClaudeBot, and Googlebot to make AI crawlability unambiguous."
-                ),
-                copy_paste_fix=(
-                    "User-agent: OAI-SearchBot\nAllow: /\n\n"
-                    "User-agent: PerplexityBot\nAllow: /\n\n"
-                    "User-agent: ClaudeBot\nAllow: /\n\n"
-                    "User-agent: Googlebot\nAllow: /\n\n"
-                    "Sitemap: https://yourdomain.com/sitemap.xml"
-                ),
-                impact=ImpactLevel.LOW,
-                effort=EffortLevel.LOW,
-                points_awarded=15,
-                points_possible=15,
+        for bot_name in AI_CRAWLER_POINTS:
+            section.add_check(
+                build_check(
+                    _CRAWLER_CHECK_IDS[bot_name],
+                    status=CheckStatus.PASS,
+                    severity=Severity.INFO,
+                    title=f"{bot_name} is unrestricted (no robots.txt found)",
+                    why_it_matters=(
+                        "Without a robots.txt, all crawlers are implicitly allowed. "
+                        "An explicit robots.txt gives you control and signals intent."
+                    ),
+                    evidence="robots.txt returned a non-200 response or was unreachable.",
+                    recommendation=(
+                        "Add a robots.txt that explicitly allows OAI-SearchBot, PerplexityBot, "
+                        "ClaudeBot, and Googlebot to make AI crawlability unambiguous."
+                    ),
+                    copy_paste_fix=(
+                        "User-agent: OAI-SearchBot\nAllow: /\n\n"
+                        "User-agent: PerplexityBot\nAllow: /\n\n"
+                        "User-agent: ClaudeBot\nAllow: /\n\n"
+                        "User-agent: Googlebot\nAllow: /\n\n"
+                        "Sitemap: https://yourdomain.com/sitemap.xml"
+                    ),
+                    impact=ImpactLevel.LOW,
+                    effort=EffortLevel.LOW,
+                )
             )
-        )
         return section
 
-    points_awarded = 0.0
     for bot_name, points in AI_CRAWLER_POINTS.items():
         aliases = [bot_name] + [
             alias for alias, canonical in CRAWLER_ALIASES.items() if canonical == bot_name
         ]
         blocked = any(robots.is_blocked(alias) for alias in aliases)
         mentioned = any(robots.is_mentioned(alias) for alias in aliases)
+        check_id = _CRAWLER_CHECK_IDS[bot_name]
 
         if blocked:
-            section.findings.append(
-                Finding(
-                    category="ai_crawler_accessibility",
-                    dimension=None,
+            section.add_check(
+                build_check(
+                    check_id,
+                    status=CheckStatus.FAIL,
                     severity=Severity.CRITICAL,
                     title=f"{bot_name} is blocked in robots.txt",
                     why_it_matters=(
@@ -84,16 +90,13 @@ def score_ai_crawler_accessibility(robots: RobotsRules) -> AuditSection:
                     copy_paste_fix=f"User-agent: {bot_name}\nAllow: /",
                     impact=ImpactLevel.HIGH,
                     effort=EffortLevel.LOW,
-                    points_awarded=0,
-                    points_possible=points,
                 )
             )
         else:
-            points_awarded += points
-            section.findings.append(
-                Finding(
-                    category="ai_crawler_accessibility",
-                    dimension=None,
+            section.add_check(
+                build_check(
+                    check_id,
+                    status=CheckStatus.PASS,
                     severity=Severity.PASS,
                     title=f"{bot_name} is allowed to crawl",
                     why_it_matters=f"{bot_name} can access and index this site's content.",
@@ -104,16 +107,13 @@ def score_ai_crawler_accessibility(robots: RobotsRules) -> AuditSection:
                     recommendation="No action needed.",
                     impact=ImpactLevel.LOW,
                     effort=EffortLevel.LOW,
-                    points_awarded=points,
-                    points_possible=points,
                 )
             )
 
-    section.points_awarded = points_awarded
     return section
 
 
-def score_js_rendering_risk(parsed: ParsedPage) -> AuditSection:
+def score_js_rendering_risk(parsed: ParsedPage, page_url: str | None = None) -> AuditSection:
     meta = CATEGORY_META["js_rendering_risk"]
     section = AuditSection(
         key="js_rendering_risk",
@@ -126,20 +126,18 @@ def score_js_rendering_risk(parsed: ParsedPage) -> AuditSection:
     spa_markers_present = parsed.spa_markers_present
 
     if word_count >= SUFFICIENT_TEXT_WORDS:
-        section.points_awarded = 5
-        severity = Severity.PASS
+        points, status, severity = 5, CheckStatus.PASS, Severity.PASS
         title = "Raw HTML contains sufficient text for AI crawlers"
         recommendation = "No action needed — content is server-rendered or static."
     elif word_count >= LIMITED_TEXT_WORDS:
-        section.points_awarded = 2
-        severity = Severity.WARNING
+        points, status, severity = 2, CheckStatus.PARTIAL, Severity.WARNING
         title = "Raw HTML has limited text — partial rendering risk"
         recommendation = (
             "Increase server-rendered text content, or implement SSR/pre-rendering "
             "so AI crawlers (which typically do not execute JavaScript) see full content."
         )
     else:
-        section.points_awarded = 0
+        points, status = 0, CheckStatus.FAIL
         severity = Severity.CRITICAL if spa_markers_present else Severity.WARNING
         title = (
             "Raw HTML is nearly empty — likely a client-rendered SPA"
@@ -151,10 +149,10 @@ def score_js_rendering_risk(parsed: ParsedPage) -> AuditSection:
             "rendering, static generation, or dynamic rendering for bot user-agents."
         )
 
-    section.findings.append(
-        Finding(
-            category="js_rendering_risk",
-            dimension=None,
+    section.add_check(
+        build_check(
+            "js.raw_text",
+            status=status,
             severity=severity,
             title=title,
             why_it_matters=(
@@ -168,17 +166,18 @@ def score_js_rendering_risk(parsed: ParsedPage) -> AuditSection:
                 f'(checked for __NEXT_DATA__, id="root", bundle.js, __NUXT__).'
             ),
             recommendation=recommendation,
-            copy_paste_fix=None,
             impact=ImpactLevel.HIGH if word_count < LIMITED_TEXT_WORDS else ImpactLevel.MEDIUM,
             effort=EffortLevel.HIGH,
-            points_awarded=section.points_awarded,
-            points_possible=5,
+            page_url=page_url,
+            points_awarded=points,
         )
     )
     return section
 
 
-def score_freshness_signals(parsed: ParsedPage, sitemap: SitemapResult) -> AuditSection:
+def score_freshness_signals(
+    parsed: ParsedPage, sitemap: SitemapResult, page_url: str | None = None
+) -> AuditSection:
     meta = CATEGORY_META["freshness_signals"]
     section = AuditSection(
         key="freshness_signals",
@@ -206,11 +205,10 @@ def score_freshness_signals(parsed: ParsedPage, sitemap: SitemapResult) -> Audit
         candidates.append(("sitemap.xml <lastmod>", sitemap.most_recent_lastmod))
 
     if not candidates:
-        section.points_awarded = 0
-        section.findings.append(
-            Finding(
-                category="freshness_signals",
-                dimension=None,
+        section.add_check(
+            build_check(
+                "freshness.latest_signal",
+                status=CheckStatus.FAIL,
                 severity=Severity.WARNING,
                 title="No freshness signal found",
                 why_it_matters=(
@@ -218,13 +216,18 @@ def score_freshness_signals(parsed: ParsedPage, sitemap: SitemapResult) -> Audit
                     "dateModified, article:modified_time, or sitemap lastmod, the page "
                     "looks potentially stale even if content is current."
                 ),
-                evidence="No JSON-LD dateModified, article:modified_time meta tag, or sitemap lastmod found.",
-                recommendation="Add a dateModified field to your Organization/Article JSON-LD and keep sitemap.xml lastmod values current.",
+                evidence=(
+                    "No JSON-LD dateModified, article:modified_time meta tag, or sitemap "
+                    "lastmod found."
+                ),
+                recommendation=(
+                    "Add a dateModified field to your Organization/Article JSON-LD and "
+                    "keep sitemap.xml lastmod values current."
+                ),
                 copy_paste_fix='"dateModified": "' + datetime.now(timezone.utc).strftime("%Y-%m-%d") + '"',
                 impact=ImpactLevel.MEDIUM,
                 effort=EffortLevel.LOW,
-                points_awarded=0,
-                points_possible=5,
+                page_url=page_url,
             )
         )
         return section
@@ -233,17 +236,16 @@ def score_freshness_signals(parsed: ParsedPage, sitemap: SitemapResult) -> Audit
     days_old = (datetime.now(timezone.utc) - most_recent).days
 
     if days_old < 90:
-        points, severity = 5, Severity.PASS
+        points, status, severity = 5, CheckStatus.PASS, Severity.PASS
     elif days_old <= 365:
-        points, severity = 2, Severity.WARNING
+        points, status, severity = 2, CheckStatus.PARTIAL, Severity.WARNING
     else:
-        points, severity = 0, Severity.WARNING
+        points, status, severity = 0, CheckStatus.FAIL, Severity.WARNING
 
-    section.points_awarded = points
-    section.findings.append(
-        Finding(
-            category="freshness_signals",
-            dimension=None,
+    section.add_check(
+        build_check(
+            "freshness.latest_signal",
+            status=status,
             severity=severity,
             title=f"Most recent freshness signal is {days_old} days old",
             why_it_matters="AI systems favor recently updated content as more trustworthy and current.",
@@ -255,8 +257,9 @@ def score_freshness_signals(parsed: ParsedPage, sitemap: SitemapResult) -> Audit
             ),
             impact=ImpactLevel.LOW if days_old < 90 else ImpactLevel.MEDIUM,
             effort=EffortLevel.LOW,
+            page_url=page_url,
             points_awarded=points,
-            points_possible=5,
+            metrics={"days_old": days_old, "source": source_label},
         )
     )
     return section

@@ -140,6 +140,16 @@
           </label>
           <input type="hidden" name="llm_enhanced" value="off">
         </div>
+        <div class="toggle-row" style="margin-top:0.5rem; align-items:center; gap:0.75rem; flex-wrap:wrap;">
+          <label for="pages" class="form-label" style="margin:0;">Pages to audit</label>
+          <select id="pages" name="pages" class="form-input" style="max-width:320px; margin:0;">
+            <option value="1" selected>Homepage only (fastest)</option>
+            <option value="3">Homepage + 2 priority pages</option>
+            <option value="5">Homepage + 4 priority pages</option>
+            <option value="10">Homepage + 9 priority pages</option>
+          </select>
+          <span class="muted" style="font-size:0.8rem;">Same-site crawl. Homepage counts 2× in coverage scores.</span>
+        </div>
       </form>
 
       <div class="trust-row">
@@ -497,6 +507,6 @@
     </div>
   </footer>
 
-  <script src="/static/app.js?v=3"></script>
+  <script src="/static/app.js?v=4"></script>
 </body>
 </html>

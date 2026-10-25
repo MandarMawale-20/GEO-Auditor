@@ -7,7 +7,14 @@ typography while remaining print-friendly.
 """
 from __future__ import annotations
 
+from html import escape as _escape
+
 from app.models import AuditReport
+
+
+def _e(value: object) -> str:
+    """Escape page-derived/report-derived text for standalone HTML output."""
+    return _escape("" if value is None else str(value), quote=True)
 
 _CSS = """
   html { font-size: 16px; color-scheme: light; }
@@ -66,13 +73,15 @@ def _grade_class(grade: str) -> str:
 
 
 def _sev_class(severity: str) -> str:
-    return f"finding-{severity}" if severity else "finding-info"
+    value = getattr(severity, "value", severity)
+    return f"finding-{value}" if value else "finding-info"
 
 
 def _findings_badge(severity: str) -> str:
-    if severity == "pass":
+    value = getattr(severity, "value", severity)
+    if value == "pass":
         return _STATUS_LABELS["yes"][1]
-    if severity == "info":
+    if value == "info":
         return _STATUS_LABELS["partial"][1]
     return _STATUS_LABELS["no"][1]
 
@@ -83,30 +92,31 @@ def render(report: AuditReport) -> str:
     pct = int(round(report.total_score / report.max_score * 100)) if report.max_score else 0
 
     score_table_rows = "".join(
-        f"<tr><td>{s.label}</td><td>{s.group}</td>"
+        f"<tr><td>{_e(s.label)}</td><td>{_e(s.group)}</td>"
         f"<td><strong>{s.points_awarded:g}</strong> / {s.points_possible:g}</td>"
         f"<td>{s.percentage:g}%</td></tr>"
         for s in report.sections
     ) or '<tr><td colspan="4" style="color:#8c8163;">No data</td></tr>'
 
     matrix_rows = "".join(
-        f"<tr><td>{row.question}</td>"
+        f"<tr><td>{_e(row.question)}</td>"
         f'<td><span class="badge {label_class}">{label_text}</span></td>'
-        f"<td>{row.evidence or ''}</td></tr>"
+        f"<td>{_e(row.evidence or '')}</td></tr>"
         for row in report.answerability_matrix
         for label_text, label_class in [_STATUS_LABELS.get(row.status.value, _STATUS_LABELS["no"])]
     ) or '<tr><td colspan="3" style="color:#8c8163;">No matrix data available</td></tr>'
 
     findings_html = []
     for f in report.all_findings:
+        sev = getattr(f.severity, "value", f.severity)
         findings_html.append(
-            f'<div class="finding {_sev_class(f.severity)}">'
+            f'<div class="finding {_sev_class(sev)}">'
             f'<div style="display:flex; align-items:center; gap:.6rem; margin-bottom:.4rem;">'
-            f'<span class="badge {_findings_badge(f.severity)}">{f.severity.upper()}</span>'
-            f'<h3 style="margin:0;">{f.title}</h3></div>'
-            f'<p style="margin:0 0 .5rem;">{f.why_it_matters}</p>'
-            f'<div class="evidence">{f.evidence}</div>'
-            f'<p style="margin:.5rem 0 0;"><span style="color:#211c12; font-weight:600;">Fix:</span> {f.recommendation}</p>'
+            f'<span class="badge {_findings_badge(sev)}">{_e(sev.upper())}</span>'
+            f'<h3 style="margin:0;">{_e(f.title)}</h3></div>'
+            f'<p style="margin:0 0 .5rem;">{_e(f.why_it_matters)}</p>'
+            f'<div class="evidence">{_e(f.evidence)}</div>'
+            f'<p style="margin:.5rem 0 0;"><span style="color:#211c12; font-weight:600;">Fix:</span> {_e(f.recommendation)}</p>'
             f"</div>"
         )
     findings_html = "".join(findings_html) or (
@@ -115,19 +125,73 @@ def render(report: AuditReport) -> str:
 
     roadmap_items = report.priority_roadmap or []
 
+    pages_rows = "".join(
+        f"<tr><td>{_e(page.final_url or page.url)}</td>"
+        f"<td>{_e(page.role)}</td>"
+        f"<td>{page.points_awarded:g} / {page.points_possible:g}</td>"
+        f"<td>{_e('Excluded (noindex)' if page.error == 'noindex_excluded' else ('Audited' if not page.error else 'Not evaluated: ' + page.error))}</td></tr>"
+        for page in report.pages
+    )
+    pages_section = (
+        "<h2>Audited Pages</h2><table><thead><tr><th>Page</th><th>Role</th>"
+        "<th>Page Checks</th><th>Status</th></tr></thead><tbody>"
+        + pages_rows
+        + "</tbody></table>"
+        if pages_rows and report.audit_scope == "site"
+        else ""
+    )
+    scope_bits = ""
+    if report.audit_scope == "site" or report.partial:
+        scope_bits = (
+            '<strong style="color:#5c5236;">Scope:</strong> '
+            + ("Site crawl" if report.audit_scope == "site" else "Single page")
+            + ' · <strong style="color:#5c5236;">Pages:</strong> '
+            + f"{report.pages_audited} · "
+            + '<strong style="color:#5c5236;">Points evaluated:</strong> '
+            + f"{report.points_evaluated:g}/{report.max_score} · "
+        )
+
+    page_detail_html = []
+    if report.audit_scope == "site":
+        for page in report.pages:
+            if not page.sections:
+                continue
+            rows = "".join(
+                f"<tr><td>{_e(section.label)}</td>"
+                f"<td>{section.points_awarded:g} / {section.points_possible:g}</td>"
+                f"<td>{_e(', '.join(sorted({check.status.value for check in section.checks})))}</td></tr>"
+                for section in page.sections
+            )
+            page_detail_html.append(
+                f"<h3>{_e(page.final_url or page.url)} ({_e(page.role)})</h3>"
+                "<table><thead><tr><th>Category</th><th>Score</th><th>Status</th>"
+                f"</tr></thead><tbody>{rows}</tbody></table>"
+            )
+    page_detail_html = "".join(page_detail_html)
+    if page_detail_html:
+        page_detail_html = "<h2>Per-Page Detail</h2>" + page_detail_html
+
+    coverage_note = (
+        '<p style="color:#b06a1f;font-size:.85rem;"><strong>Partial coverage:</strong> '
+        f"{report.points_evaluated:g} of {report.max_score} points could be evaluated. "
+        "Unknown or unreachable checks are disclosed, not counted as failures.</p>"
+        if report.partial
+        else ""
+    )
+
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
-  <title>GEO Audit Report — {display_url}</title>
+  <title>GEO Audit Report — {_e(display_url)}</title>
   <style>{_CSS}</style>
 </head>
 <body>
   <div class="container">
     <h1>GEO Audit Report</h1>
-    <p><a href="{display_url}">{display_url}</a></p>
+    <p><a href="{_e(display_url)}">{_e(display_url)}</a></p>
 
     <div style="display:flex;align-items:center;gap:1.5rem;margin:1.5rem 0;">
       <div class="score-circle">
@@ -137,8 +201,8 @@ def render(report: AuditReport) -> str:
         </div>
       </div>
       <div>
-        <span class="badge {_grade_class(report.grade)}" style="font-size:1.1rem;padding:.3rem .7rem;">Grade {report.grade}</span>
-        <p style="margin-top:.4rem;color:#5c5236;">{report.grade_label}</p>
+        <span class="badge {_grade_class(report.grade)}" style="font-size:1.1rem;padding:.3rem .7rem;">Grade {_e(report.grade)}</span>
+        <p style="margin-top:.4rem;color:#5c5236;">{_e(report.grade_label)}</p>
         <p style="font-size:.82rem;color:#8c8163;margin-top:.2rem;">{pct}% of AI answerability signals met.</p>
       </div>
     </div>
@@ -146,8 +210,10 @@ def render(report: AuditReport) -> str:
     <p style="color:#8c8163;font-size:.85rem;">
       <strong style="color:#5c5236;">Generated:</strong> {report.generated_at} ·
       <strong style="color:#5c5236;">Audited in</strong> {report.audit_duration_ms:.0f} ms ·
-      <strong style="color:#5c5236;">Mode:</strong> {"AI-enhanced" if report.llm_enhanced else "Deterministic"}
+      {scope_bits}<strong style="color:#5c5236;">Mode:</strong> {"AI-enhanced" if report.llm_enhanced else "Deterministic"}
     </p>
+    {coverage_note}
+    {pages_section}
 
     <h2>Score Breakdown</h2>
     <table>
@@ -164,17 +230,19 @@ def render(report: AuditReport) -> str:
     <h2>Detailed Findings</h2>
     {findings_html}
 
+    {page_detail_html}
+
     <h2>Top Priority Recommendations</h2>
     {''.join(
-        f'<p style="margin-bottom:.6rem;">• <strong style="color:#211c12;">{f.title}</strong>: '
-        f'{f.recommendation} <em style="color:#8c8163;">(impact: {f.impact.value}, effort: {f.effort.value})</em></p>'
+        f'<p style="margin-bottom:.6rem;">• <strong style="color:#211c12;">{_e(f.title)}</strong>: '
+        f'{_e(f.recommendation)} <em style="color:#8c8163;">(impact: {_e(f.impact.value)}, effort: {_e(f.effort.value)})</em></p>'
         for f in report.top_priorities
     ) if report.top_priorities else '<p style="color:#8c8163;">No priority recommendations.</p>'}
 
     <h2>Priority Roadmap</h2>
     {''.join(
-        f'<p style="margin-bottom:.4rem;">• <strong style="color:#211c12;">{f.title}</strong> '
-        f'<em style="color:#8c8163;">(impact: {f.impact.value}, effort: {f.effort.value}, '
+        f'<p style="margin-bottom:.4rem;">• <strong style="color:#211c12;">{_e(f.title)}</strong> '
+        f'<em style="color:#8c8163;">(impact: {_e(f.impact.value)}, effort: {_e(f.effort.value)}, '
         f'points: {f.points_awarded:.1f}/{f.points_possible:.1f})</em></p>'
         for f in roadmap_items
     ) if roadmap_items else '<p style="color:#8c8163;">No actionable findings.</p>'}

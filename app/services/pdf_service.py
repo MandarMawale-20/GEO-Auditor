@@ -240,6 +240,25 @@ def _build_story(report: AuditReport) -> list:
         f"<b>Generated:</b> {report.generated_at}",
         f"<b>Audit Duration:</b> {report.audit_duration_ms} ms",
     ]
+    if report.audit_scope == "site" or report.partial:
+        summary_parts.extend(
+            [
+                f"<b>Audit Scope:</b> {'Site crawl' if report.audit_scope == 'site' else 'Single page'}",
+                f"<b>Pages Audited:</b> {report.pages_audited}",
+            ]
+        )
+        if report.pages_discovered:
+            summary_parts.append(
+                f"<b>Internal Candidates Discovered:</b> {report.pages_discovered}"
+            )
+        summary_parts.append(
+            f"<b>Points Evaluated:</b> {report.points_evaluated:g} / {report.max_score}"
+        )
+    if report.partial:
+        summary_parts.append(
+            "<b>Coverage:</b> PARTIAL — some pages or checks could not be evaluated. "
+            "Unknown checks are disclosed, not treated as failures."
+        )
     if report.llm_enhanced:
         summary_parts.append("<b>Scoring Mode:</b> Groq-enhanced")
     elif report.llm_error:
@@ -249,6 +268,52 @@ def _build_story(report: AuditReport) -> list:
     for part in summary_parts:
         story.append(Paragraph(part, _styles["BodyText"]))
     story.append(Spacer(1, 8))
+
+    # Audited pages (multipage reports only).
+    if report.audit_scope == "site" and report.pages:
+        story.append(Paragraph("Audited Pages", _styles["SectionHeading"]))
+        page_rows = [["Page", "Role", "Page Checks", "Status", "Weight"]]
+        for page in report.pages:
+            if page.error:
+                status = (
+                    "Excluded (noindex)"
+                    if page.error == "noindex_excluded"
+                    else f"Not evaluated: {page.error}"
+                )
+            else:
+                status = "Audited"
+            page_rows.append(
+                [
+                    _table_text(page.final_url or page.url),
+                    _table_text(page.role),
+                    f"{page.points_awarded:.1f} / {page.points_possible:.0f}",
+                    _table_text(status),
+                    "2x" if page.role == "homepage" else "1x",
+                ]
+            )
+        pages_table = Table(
+            page_rows,
+            colWidths=[3.0 * inch, 0.7 * inch, 0.9 * inch, 1.3 * inch, 0.5 * inch],
+            hAlign=TA_LEFT,
+        )
+        pages_table.setStyle(
+            TableStyle(
+                [
+                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                    ("FONTSIZE", (0, 0), (-1, -1), 8),
+                    ("LEADING", (0, 0), (-1, -1), 10),
+                    ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#cccccc")),
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e8e8e8")),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 3),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 3),
+                    ("TOPPADDING", (0, 0), (-1, -1), 3),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+                ]
+            )
+        )
+        story.append(pages_table)
+        story.append(Spacer(1, 10))
 
     # Calibration note
     story.append(
@@ -317,6 +382,55 @@ def _build_story(report: AuditReport) -> list:
             _append_finding(story, finding, numbered=i, include_points=True)
     else:
         story.append(Paragraph("No detailed findings.", _styles["BodyText"]))
+
+    # Per-page detail (internal PDF only; not included in share payloads).
+    if report.audit_scope == "site" and report.pages:
+        story.append(PageBreak())
+        story.append(Paragraph("Per-Page Detail", _styles["SectionHeading"]))
+        for page in report.pages:
+            if not page.sections:
+                continue
+            story.append(
+                Paragraph(
+                    f"<b>{_escape_xml(page.final_url or page.url)}</b> "
+                    f"({_escape_xml(page.role)}) — "
+                    f"{page.points_awarded:.1f} / {page.points_possible:.0f} page points",
+                    _styles["BodyText"],
+                )
+            )
+            page_rows = [["Category", "Score", "Status"]]
+            for section in page.sections:
+                statuses = sorted({check.status.value for check in section.checks})
+                page_rows.append(
+                    [
+                        _table_text(section.label),
+                        f"{section.points_awarded:.1f} / {section.points_possible:.0f}",
+                        _table_text(", ".join(statuses)),
+                    ]
+                )
+            detail_table = Table(
+                page_rows,
+                colWidths=[3.6 * inch, 1.0 * inch, 1.8 * inch],
+                hAlign=TA_LEFT,
+            )
+            detail_table.setStyle(
+                TableStyle(
+                    [
+                        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                        ("FONTSIZE", (0, 0), (-1, -1), 8),
+                        ("LEADING", (0, 0), (-1, -1), 10),
+                        ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#cccccc")),
+                        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e8e8e8")),
+                        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                        ("LEFTPADDING", (0, 0), (-1, -1), 3),
+                        ("RIGHTPADDING", (0, 0), (-1, -1), 3),
+                        ("TOPPADDING", (0, 0), (-1, -1), 3),
+                        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+                    ]
+                )
+            )
+            story.append(detail_table)
+            story.append(Spacer(1, 8))
 
     # AI Answerability Matrix (if present)
     if report.answerability_matrix:
