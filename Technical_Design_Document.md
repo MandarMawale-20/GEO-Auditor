@@ -97,7 +97,7 @@ GEO Auditor is built with **FastAPI**, **httpx**, **BeautifulSoup**, **Pydantic*
 
 ### Core Flow
 
-1. Fetch page HTML and `robots.txt` concurrently, then discover `sitemap.xml` (including robots.txt hints). Sitemap hints/children are capped and restricted to the audited site; a 5xx or transport failure for `robots.txt` is `UNKNOWN`, while 4xx/empty is treated as no restrictions.
+1. Fetch page HTML and `robots.txt` concurrently, then discover `sitemap.xml` (including robots.txt hints). Sitemap hints/children are capped and restricted to the audited site; a 5xx or transport failure for `robots.txt` is `UNKNOWN`, while 4xx/empty is treated as no restrictions. If the homepage redirects to a different origin, `robots.txt` is re-fetched from the final origin. Every fetch validates all resolved IPs and pins a validated address for the TCP connection; redirect targets are validated and pinned again.
 2. Parse the HTML once.
 3. Run independent scoring engines for the homepage.
 4. For `pages>1`, build a deterministic crawl plan from homepage links and sitemap URLs, filter by same-host scope/robots.txt/assets/queries, fetch under a shared monotonic deadline, and audit each page in isolation.
@@ -130,7 +130,8 @@ The repository now includes a regression suite (`python -m pytest -q`) covering:
 * Organization-schema consistency (no carrier, one carrier, matching, conflicting)
 * robots.txt Allow/Disallow longest-match and wildcard rules
 * crawl host scope, canonical validation, budget/timeout distinction, and outage isolation
-* legacy share-payload decoding and new report round-trips
+* DNS-pinned redirect handling and robots.txt refetch after a cross-origin homepage redirect
+* legacy share-payload decoding, new report round-trips, and oversized-payload viewer fallback
 * PDF and standalone HTML exports
 
 ## 9. What I Would Build Next

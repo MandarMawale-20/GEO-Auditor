@@ -7,7 +7,9 @@ import json
 import logging
 import os
 import sys
+import uuid
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from pathlib import Path
 
 from cachetools import TTLCache
@@ -222,9 +224,14 @@ async def audit_form(
     if err:
         raise HTTPException(status_code=400, detail=err)
 
-    encoded = encode_report_for_share(report)
+    prepared = prepare_share_payload(report)
+    if prepared.too_large:
+        return RedirectResponse(
+            url=f"/report/view/{report.report_id}?too_large=1",
+            status_code=status.HTTP_307_TEMPORARY_REDIRECT,
+        )
     return RedirectResponse(
-        url=f"{FRONTEND_BASE_URL}/report.html#{encoded}",
+        url=f"{FRONTEND_BASE_URL}/report.html#{prepared.encoded}",
         status_code=status.HTTP_307_TEMPORARY_REDIRECT,
     )
 
@@ -269,9 +276,18 @@ async def render_shared_report(request: Request) -> RedirectResponse:
     except (ValueError, TypeError) as exc:
         raise HTTPException(status_code=400, detail=f"Invalid report data: {exc}") from exc
 
-    encoded = encode_report_for_share(report)
+    prepared = prepare_share_payload(report)
+    if prepared.too_large:
+        # Never trust a caller-supplied cache key: the legacy endpoint is
+        # unauthenticated, and a guessed ID could overwrite another report.
+        report.report_id = uuid.uuid4().hex
+        REPORT_CACHE[report.report_id] = report
+        return RedirectResponse(
+            url=f"/report/view/{report.report_id}?too_large=1",
+            status_code=status.HTTP_307_TEMPORARY_REDIRECT,
+        )
     return RedirectResponse(
-        url=f"{FRONTEND_BASE_URL}/report.html#{encoded}",
+        url=f"{FRONTEND_BASE_URL}/report.html#{prepared.encoded}",
         status_code=status.HTTP_307_TEMPORARY_REDIRECT,
     )
 
@@ -298,16 +314,28 @@ async def audit_api(
     if report is None:
         raise HTTPException(status_code=500, detail="Audit failed unexpectedly.")
 
-    encoded = encode_report_for_share(report)
+    prepared = prepare_share_payload(report)
+    payload = {
+        "ok": True,
+        "report_id": report.report_id,
+        "report": report.model_dump(),
+    }
+    if prepared.too_large:
+        # A stateless hash cannot carry this report even after dropping page
+        # summaries. The in-memory report viewer is the fallback so the audit
+        # result is still available to the user.
+        payload["share_url"] = None
+        payload["share_error"] = (
+            "This report is too large to share as a URL. "
+            "The full report is available in a temporary server-side view."
+        )
+        payload["report_view_path"] = (
+            f"/report/view/{report.report_id}" if report.report_id else None
+        )
+    else:
+        payload["share_url"] = f"{FRONTEND_BASE_URL}/report.html#{prepared.encoded}"
 
-    return JSONResponse(
-        {
-            "ok": True,
-            "report_id": report.report_id,
-            "report": report.model_dump(),
-            "share_url": f"{FRONTEND_BASE_URL}/report.html#{encoded}",
-        }
-    )
+    return JSONResponse(payload)
 
 
 @app.get("/audit/pdf/{report_id}")
@@ -345,6 +373,27 @@ async def download_html(report_id: str) -> Response:
     )
 
 
+@app.get("/report/view/{report_id}", response_class=HTMLResponse)
+async def view_report(report_id: str, too_large: bool = Query(default=False)) -> Response:
+    """Render a cached report inline (fallback when a share hash is too large)."""
+    report = REPORT_CACHE.get(report_id)
+    if report is None:
+        return _report_not_found_response()
+
+    html_content = _render_offline_html_report(report)
+    if too_large:
+        banner = (
+            '<div style="max-width:900px;margin:1rem auto 0;padding:.8rem 1rem;'
+            'border:1px solid #ddcda3;border-radius:8px;background:#efe6d2;'
+            'font-size:.85rem;color:#5c5236;">'
+            "This report is too large to encode in a share URL. "
+            "This temporary server-side view expires when the report cache is cleared."
+            "</div>"
+        )
+        html_content = html_content.replace("<body>", "<body>" + banner, 1)
+    return HTMLResponse(content=html_content)
+
+
 def _render_offline_html_report(report: AuditReport) -> str:
     from app.services.html_export import render
     return render(report)
@@ -376,13 +425,23 @@ async def sample_report(report_id: str) -> HTMLResponse:
     return HTMLResponse(content=candidate.read_text(encoding="utf-8"))
 
 
-def encode_report_for_share(report: AuditReport) -> str:
+@dataclass(frozen=True)
+class ShareEncoding:
+    """Result of preparing a stateless share hash."""
+
+    encoded: str
+    too_large: bool
+
+
+def prepare_share_payload(report: AuditReport) -> ShareEncoding:
     """Serialize a report, gzip it, and base64url-encode it for a URL hash.
 
     Share URLs live in the address bar, so payloads are guarded by a size
     cap. If the full report is too large, presentation-only duplicates are
     dropped first (``all_findings`` can be rebuilt from ``sections``), then
     the per-page summary list. Scoring data and section findings always stay.
+    ``too_large`` is true when even the minimal form exceeds the cap; callers
+    should then use the server-side report viewer instead of a hash URL.
     """
     candidates = [report]
 
@@ -405,15 +464,20 @@ def encode_report_for_share(report: AuditReport) -> str:
         compressed = gzip.compress(payload, compresslevel=9)
         encoded = base64.urlsafe_b64encode(compressed).rstrip(b"=").decode("ascii")
         if len(encoded) <= MAX_SHARE_PAYLOAD_BYTES:
-            return encoded
+            return ShareEncoding(encoded=encoded, too_large=False)
 
     logger.warning(
-        "Share payload for report %s is %s chars (cap %s); keeping minimal form.",
+        "Share payload for report %s is %s chars (cap %s); serving cached view.",
         report.report_id,
         len(encoded),
         MAX_SHARE_PAYLOAD_BYTES,
     )
-    return encoded
+    return ShareEncoding(encoded=encoded, too_large=True)
+
+
+def encode_report_for_share(report: AuditReport) -> str:
+    """Compatibility wrapper returning the encoded payload (may be oversize)."""
+    return prepare_share_payload(report).encoded
 
 
 @app.get("/report/share", response_class=HTMLResponse)

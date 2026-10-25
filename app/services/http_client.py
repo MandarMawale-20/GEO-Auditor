@@ -18,22 +18,145 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import socket
 import time
 from dataclasses import dataclass
 from typing import Optional
 from urllib.parse import urljoin, urlsplit, urlunsplit
 
+import httpcore
 import httpx
 
 from app.config import DEFAULT_HEADERS, settings
 from app.models import FetchResult
-from app.services.url_validator import validate_url
+from app.services.url_validator import resolve_public_ips, validate_url
 
 logger = logging.getLogger("geo_auditor.http")
 
 # Redirect status codes that we handle manually (so we can validate the target).
 _REDIRECT_STATUS = frozenset({301, 302, 303, 307, 308})
+
+
+# ---------------------------------------------------------------------------
+# DNS pinning
+# ---------------------------------------------------------------------------
+# URL validation resolves every address and checks that all of them are public.
+# The transport below connects to one of those exact addresses instead of
+# resolving the hostname again, closing the DNS-rebinding (TOCTOU) window.
+_PINNED_IPS: dict[str, tuple[str, ...]] = {}
+
+
+def _pin_key(host: str) -> str:
+    """Normalize a hostname to the form httpcore uses for connection origins."""
+    key = (host or "").strip().lower().rstrip(".")
+    if not key:
+        return ""
+    try:
+        return key.encode("idna").decode("ascii")
+    except UnicodeError:
+        return key
+
+
+def set_pinned_ips(host: str, ips: tuple[str, ...] | list[str]) -> None:
+    """Remember the validated addresses for *host* (used by the transport)."""
+    key = _pin_key(host)
+    if not key:
+        return
+    unique = tuple(dict.fromkeys(str(ip) for ip in ips if ip))
+    if unique:
+        _PINNED_IPS[key] = unique
+
+
+def get_pinned_ips(host: str) -> tuple[str, ...]:
+    """Return the currently pinned addresses for *host* (diagnostics/tests)."""
+    return _PINNED_IPS.get(_pin_key(host), ())
+
+
+def clear_pinned_ips() -> None:
+    """Clear the in-process DNS pin cache (tests / lifecycle cleanup)."""
+    _PINNED_IPS.clear()
+
+
+class PinnedNetworkBackend(httpcore.AsyncNetworkBackend):
+    """httpcore backend that connects to validated IPs instead of re-resolving.
+
+    HTTP ``Host`` headers and TLS SNI still come from the original URL because
+    only the TCP connect target is changed. If a host has no pin (for example a
+    caller using the transport directly), the wrapped backend resolves as usual.
+    """
+
+    def __init__(self, backend: httpcore.AsyncNetworkBackend | None = None) -> None:
+        self._backend = backend or httpcore.AnyIOBackend()
+
+    async def connect_tcp(
+        self,
+        host: str,
+        port: int,
+        timeout: float | None = None,
+        local_address: str | None = None,
+        socket_options=None,
+    ) -> httpcore.AsyncNetworkStream:
+        pinned = _PINNED_IPS.get(_pin_key(host), ())
+        if pinned:
+            last_error: Exception | None = None
+            for ip in pinned:
+                try:
+                    return await self._backend.connect_tcp(
+                        host=ip,
+                        port=port,
+                        timeout=timeout,
+                        local_address=local_address,
+                        socket_options=socket_options,
+                    )
+                except (httpcore.ConnectError, httpcore.ConnectTimeout) as exc:
+                    last_error = exc
+            if last_error is not None:
+                raise last_error
+
+        return await self._backend.connect_tcp(
+            host=host,
+            port=port,
+            timeout=timeout,
+            local_address=local_address,
+            socket_options=socket_options,
+        )
+
+    async def connect_unix_socket(
+        self,
+        path: str,
+        timeout: float | None = None,
+        socket_options=None,
+    ) -> httpcore.AsyncNetworkStream:
+        return await self._backend.connect_unix_socket(
+            path=path, timeout=timeout, socket_options=socket_options
+        )
+
+    async def sleep(self, seconds: float) -> None:
+        await self._backend.sleep(seconds)
+
+
+class PinnedAsyncHTTPTransport(httpx.AsyncHTTPTransport):
+    """``httpx`` transport whose TCP connections use validated DNS results.
+
+    ``httpx.AsyncHTTPTransport`` does not expose its ``httpcore`` network
+    backend, so the pool it creates is replaced immediately with an identically
+    configured pool using :class:`PinnedNetworkBackend`. This is tied to the
+    pinned httpx/httpcore versions in ``requirements.txt``.
+    """
+
+    def __init__(self, limits: httpx.Limits) -> None:
+        super().__init__(limits=limits)
+        self._pool = httpcore.AsyncConnectionPool(
+            ssl_context=httpx.create_ssl_context(
+                verify=True, cert=None, trust_env=True
+            ),
+            max_connections=limits.max_connections,
+            max_keepalive_connections=limits.max_keepalive_connections,
+            keepalive_expiry=limits.keepalive_expiry,
+            http1=True,
+            http2=False,
+            retries=0,
+            network_backend=PinnedNetworkBackend(),
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -88,54 +211,12 @@ async def read_limited_stream(
 async def resolve_and_validate_ips(hostname: str) -> tuple[bool, Optional[str]]:
     """Resolve *hostname* and validate that **all** returned IPs are public.
 
-    Returns ``(True, None)`` when every resolved IP (IPv4 and IPv6) is
-    globally routable, or ``(False, reason)`` when any IP is internal,
-    loopback, link-local, multicast, reserved, or unspecified.
-
-    Checking *all* addresses (not just the first) is critical: a dual-stack
-    host may resolve to one public and one private IP, and a connection
-    attempt may land on either.
+    Kept as a compatibility helper for callers/tests. The safe-fetch paths use
+    :func:`app.services.url_validator.resolve_public_ips`, which returns the
+    validated addresses so the transport can pin them.
     """
-    import ipaddress
-
-    try:
-        infos = await asyncio.to_thread(
-            socket.getaddrinfo, hostname, None, type=socket.SOCK_STREAM
-        )
-    except socket.gaierror:
-        # DNS failure — let the fetch layer report the fetch error.
-        return True, None
-    except socket.timeout:
-        return False, "URL hostname could not be resolved within the time limit."
-    except (ValueError, OSError):
-        return False, "DNS resolution failed."
-
-    for family, _type, _proto, _canon, sockaddr in infos:
-        ip_str = sockaddr[0]
-        try:
-            ip = ipaddress.ip_address(ip_str)
-        except ValueError:
-            continue
-
-        if not ip.is_global:
-            if ip.is_loopback:
-                return False, "URL resolves to a loopback address."
-            if ip.is_private:
-                return False, "URL resolves to a private IP range."
-            if ip.is_link_local:
-                return False, "URL resolves to a link-local address."
-            if ip.is_multicast:
-                return False, "URL resolves to a multicast address."
-            if ip.is_unspecified:
-                return False, "URL resolves to an unspecified address (0.0.0.0 / ::)."
-            if ip.is_reserved:
-                return False, "URL resolves to a reserved IP address."
-            return False, "URL resolves to a non-routable IP address."
-
-    if not infos:
-        return False, "URL hostname did not resolve to any address."
-
-    return True, None
+    ok, reason, _ = await resolve_public_ips(hostname)
+    return ok, reason
 
 
 def _resolve_location(base_url: str, location: str) -> str:
@@ -165,12 +246,38 @@ _client_lock = asyncio.Lock()
 
 def _create_client() -> httpx.AsyncClient:
     """Create a new shared AsyncClient with SSRF-safe defaults."""
+    limits = httpx.Limits(max_connections=20, max_keepalive_connections=10)
     return httpx.AsyncClient(
         headers=DEFAULT_HEADERS,
         follow_redirects=False,  # We validate redirects manually.
         timeout=settings.request_timeout_seconds,
-        limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
+        limits=limits,
+        transport=PinnedAsyncHTTPTransport(limits),
     )
+
+
+async def _ensure_pinned(url: str, validation) -> tuple[bool, Optional[str]]:
+    """Pin the validated IPs for *url*'s host before opening a connection.
+
+    ``validate_url`` already resolves and checks every address, so normally
+    this only copies its result into the transport cache. A missing result
+    (DNS failure during validation, or a test double) triggers one more
+    validated resolution; a host that still has no public address is rejected
+    rather than allowing httpx to resolve it independently.
+    """
+    host = (urlsplit(url).hostname or "").strip()
+    if not host:
+        return False, "URL has no hostname."
+
+    ips = tuple(getattr(validation, "resolved_ips", ()) or ())
+    if not ips:
+        ok, reason, resolved = await resolve_public_ips(host)
+        if not ok:
+            return False, reason
+        ips = tuple(resolved)
+
+    set_pinned_ips(host, ips)
+    return True, None
 
 
 async def get_client() -> httpx.AsyncClient:
@@ -207,6 +314,7 @@ async def shutdown_http_client() -> None:
     if _client is not None:
         await _client.aclose()
         _client = None
+        clear_pinned_ips()
         logger.info("HTTP client closed.")
 
 
@@ -247,6 +355,16 @@ async def safe_get_text(
             url=url,
             ok=False,
             error=validation.reason,
+            elapsed_ms=round((time.monotonic() - start) * 1000, 2),
+        )
+
+    pin_ok, pin_reason = await _ensure_pinned(url, validation)
+    if not pin_ok:
+        logger.warning("SSRF blocked: %s — %s", url, pin_reason)
+        return FetchResult(
+            url=url,
+            ok=False,
+            error=pin_reason,
             elapsed_ms=round((time.monotonic() - start) * 1000, 2),
         )
 
@@ -297,18 +415,19 @@ async def safe_get_text(
                             redirect_count=redirect_count,
                         )
 
-                    # Validate resolved IPs of redirect target.
-                    redirect_host = (urlsplit(new_url).hostname) or ""
-                    ip_ok, ip_reason = await resolve_and_validate_ips(redirect_host)
-                    if not ip_ok:
+                    # Pin the redirect target's validated IPs before connecting.
+                    pin_ok, pin_reason = await _ensure_pinned(
+                        new_url, redirect_validation
+                    )
+                    if not pin_ok:
                         logger.warning(
-                            "SSRF blocked on redirect (IP): %s — %s",
-                            new_url, ip_reason,
+                            "SSRF blocked on redirect: %s — %s",
+                            new_url, pin_reason,
                         )
                         return FetchResult(
                             url=url,
                             ok=False,
-                            error=f"Redirect blocked: {ip_reason}",
+                            error=f"Redirect blocked: {pin_reason}",
                             elapsed_ms=round((time.monotonic() - start) * 1000, 2),
                             redirect_count=redirect_count,
                         )
@@ -410,6 +529,16 @@ async def safe_head_or_get(
             elapsed_ms=round((time.monotonic() - start) * 1000, 2),
         )
 
+    pin_ok, pin_reason = await _ensure_pinned(url, validation)
+    if not pin_ok:
+        logger.warning("SSRF blocked: %s — %s", url, pin_reason)
+        return FetchResult(
+            url=url,
+            ok=False,
+            error=pin_reason,
+            elapsed_ms=round((time.monotonic() - start) * 1000, 2),
+        )
+
     active_client = client if client is not None else await get_client()
 
     # --- Attempt HEAD first (with redirect validation) ---
@@ -482,16 +611,17 @@ async def _safe_head(
                             redirect_count=redirect_count,
                         )
 
-                    redirect_host = (urlsplit(new_url).hostname) or ""
-                    ip_ok, ip_reason = await resolve_and_validate_ips(redirect_host)
-                    if not ip_ok:
+                    pin_ok, pin_reason = await _ensure_pinned(
+                        new_url, redirect_validation
+                    )
+                    if not pin_ok:
                         logger.warning(
-                            "SSRF blocked on HEAD redirect (IP): %s — %s",
-                            new_url, ip_reason,
+                            "SSRF blocked on HEAD redirect: %s — %s",
+                            new_url, pin_reason,
                         )
                         return FetchResult(
                             url=url, ok=False,
-                            error=f"Redirect blocked: {ip_reason}",
+                            error=f"Redirect blocked: {pin_reason}",
                             elapsed_ms=round((time.monotonic() - start) * 1000, 2),
                             redirect_count=redirect_count,
                         )

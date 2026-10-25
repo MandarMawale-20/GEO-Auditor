@@ -7,6 +7,7 @@ import re
 import time
 import uuid
 from datetime import datetime, timezone
+from urllib.parse import urlsplit
 
 from app.aggregation import aggregate_sections, unknown_check
 from app.checks import CHECK_SPECS, Aggregation, checks_for_category
@@ -77,6 +78,38 @@ _NOINDEX_RE = re.compile(r"(?:^|[\s,;:])(?:noindex|none)(?=$|[\s,;:])", re.IGNOR
 
 def _is_noindex(value: str | None) -> bool:
     return bool(value and _NOINDEX_RE.search(value))
+
+
+def _same_robots_origin(first_url: str, second_url: str) -> bool:
+    """True when both URLs share a robots.txt origin (apex/www equivalent).
+
+    robots.txt is defined per scheme + host + port. A homepage redirect that
+    changes scheme, port, or (non-apex/www) host means the robots file fetched
+    from the original URL does not apply to the final page.
+    """
+    try:
+        first = urlsplit(first_url)
+        second = urlsplit(second_url)
+    except ValueError:
+        return False
+
+    def origin_parts(parts):
+        scheme = (parts.scheme or "").lower()
+        try:
+            port = parts.port
+        except ValueError:
+            return None
+        if port is None:
+            port = 443 if scheme == "https" else 80 if scheme == "http" else None
+        return scheme, port
+
+    first_origin = origin_parts(first)
+    if first_origin is None or first_origin != origin_parts(second):
+        return False
+    return bool(
+        site_hosts_from_url(first_url, False)
+        & site_hosts_from_url(second_url, False)
+    )
 
 
 def _health_from_result(result) -> FetchHealth:
@@ -421,6 +454,24 @@ async def run_audit(
         robots_rules = robots_result
 
     final_url = html_result.final_url or url
+    if not _same_robots_origin(url, final_url):
+        # The homepage redirected to a different origin, so the robots.txt
+        # fetched concurrently belongs to the wrong site. Re-fetch from the
+        # final origin before making any crawler-access decisions.
+        logger.info(
+            "Homepage redirected across origins (%s -> %s); refetching robots.txt.",
+            url,
+            final_url,
+        )
+        try:
+            robots_rules = await get_robots_rules(final_url)
+        except Exception as exc:  # noqa: BLE001 — robots failure must not kill audit
+            logger.error("robots.txt refetch failed unexpectedly: %s", exc, exc_info=True)
+            robots_rules = RobotsRules(
+                exists=False,
+                fetch_error=f"{type(exc).__name__}: {exc}",
+            )
+
     try:
         sitemap_info = await get_sitemap_info(
             final_url,

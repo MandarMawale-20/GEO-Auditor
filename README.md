@@ -264,11 +264,13 @@ Reports include `audit_scope`, `pages`, `pages_audited`, `pages_discovered`,
 `points_evaluated`, `partial`, `crawl_stats`, and `scoring_version`. Shared URLs
 are gzip + base64url encoded in the hash fragment; a 64k-character size guard
 drops presentation-only duplicates (then page summaries) if a payload would
-make the URL impractically long for common browser address bars. Section
-scoring detail (`checks`) and per-page scoring sections are excluded from
-shared payloads and remain available to PDF/HTML exports from the server-side
-cache. The report viewer treats hash payloads as untrusted input: numeric
-fields, grades, severities, and page links are validated before rendering.
+make the URL impractically long for common browser address bars. If even the
+compact form exceeds that cap, the API returns `share_url: null` plus a
+temporary `report_view_path` instead of an unusable URL. Section scoring detail
+(`checks`) and per-page scoring sections are excluded from shared payloads and
+remain available to PDF/HTML exports from the server-side cache. The report
+viewer treats hash payloads as untrusted input: numeric fields, grades,
+severities, and page links are validated before rendering.
 
 ### Render (Production)
 
@@ -343,6 +345,7 @@ Full sample reports are in [`sample_reports/`](sample_reports/) and served at `/
 - **Crawl is bounded and non-recursive.** Multipage audits start from homepage links plus `sitemap.xml`, with a deterministic top-N plan, same-host scope, and a shared deadline. Subdomains are excluded unless `CRAWL_INCLUDE_SUBDOMAINS=true`. Sitemap hints are capped and must stay on the audited site; child sitemap expansion is limited.
 - **Internal noindex pages are excluded from scoring, not failed.** They remain visible in the page list with `noindex_excluded`; `crawl_stats.excluded` distinguishes them from real crawl failures.
 - **An unreadable robots.txt is unknown, not a full pass.** 4xx means no restrictions per RFC 9309; 5xx, 429, and transport failures produce UNKNOWN checks with disclosed points evaluated.
+- **Outbound fetches are SSRF-safe against DNS rebinding.** Every resolved IP is validated, then the validated address is pinned for the actual TCP connection; redirects are revalidated and re-pinned. `robots.txt` is re-fetched when the homepage lands on a different origin.
 - **LLM layer is intentionally minimal (2 of 10 categories).** This was a deliberate product decision: the LLM sharpens two heuristic categories without making API reachability a hard dependency.
 
 ## 10. Future Improvements

@@ -68,10 +68,16 @@ def normalize_url(raw_url: str) -> str:
 
 @dataclass
 class ValidationResult:
-    """Outcome of :func:`validate_url`."""
+    """Outcome of :func:`validate_url`.
+
+    ``resolved_ips`` carries the exact public addresses that were validated so
+    the HTTP transport can connect to one of them without resolving the
+    hostname a second time (the DNS-rebinding window).
+    """
 
     is_valid: bool
     reason: str | None = None  # populated when is_valid is False
+    resolved_ips: tuple[str, ...] = ()
 
 
 def _ip_is_blocked(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> str | None:
@@ -99,8 +105,10 @@ def _ip_is_blocked(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> str | N
     return "URL resolves to a non-routable IP address."
 
 
-async def _hostname_is_blocked(hostname: str) -> str | None:
-    """Return a rejection reason if *hostname* is unsafe, otherwise ``None``.
+async def _hostname_is_blocked(
+    hostname: str,
+) -> tuple[str | None, tuple[str, ...]]:
+    """Return a rejection reason and the validated public IPs.
 
     Performs a syntactic check (reject literal hostnames like ``localhost``)
     and a DNS check (reject IPs that resolve to private / loopback / link-
@@ -108,33 +116,35 @@ async def _hostname_is_blocked(hostname: str) -> str | None:
     via :func:`socket.getaddrinfo` and rejects if any resolved IP is non-
     routable, preventing dual-stack bypass where one address is public and
     another is private.
+
+    The returned IPs are the exact addresses that passed validation; callers
+    can pin their HTTP transport to them instead of resolving again.
     """
     if not hostname:
-        return "URL has no hostname."
+        return "URL has no hostname.", ()
 
     if hostname.lower() in _BLOCKED_HOSTNAMES:
-        return "URL hostname is a blocked local hostname."
+        return "URL hostname is a blocked local hostname.", ()
 
-    # IP literal (v4 / v6)
     try:
         ip = ipaddress.ip_address(hostname)
     except ValueError:
         ip = None
 
     if ip is not None:
-        return _ip_is_blocked(ip)
+        blocked = _ip_is_blocked(ip)
+        return blocked, (() if blocked else (str(ip),))
 
     lower = hostname.lower()
     if lower.endswith(_BLOCKED_TLDS):
-        return "URL hostname uses a private/internal TLD suffix."
+        return "URL hostname uses a private/internal TLD suffix.", ()
 
     if "." not in hostname:
-        return "URL hostname is a single-label internal name."
+        return "URL hostname is a single-label internal name.", ()
 
-    # Resolve via DNS and check ALL addresses.
     try:
         # getaddrinfo returns every resolved address (IPv4 + IPv6). It is a
-        # blocking call — run in a thread to avoid blocking the event loop.
+        # blocking call - run in a thread to avoid blocking the event loop.
         original_timeout = socket.getdefaulttimeout()
         socket.setdefaulttimeout(5.0)
         try:
@@ -142,27 +152,41 @@ async def _hostname_is_blocked(hostname: str) -> str | None:
         finally:
             socket.setdefaulttimeout(original_timeout)
     except socket.gaierror:
-        # DNS failure — the host may simply not exist, which is not an
-        # SSRF risk. Let the fetch layer report the fetch error.
-        return None
+        # DNS failure: no IP is returned, so the safe HTTP client will refuse
+        # to resolve the host a second time.
+        return None, ()
     except socket.timeout:
-        return "URL hostname could not be resolved within the time limit."
+        return "URL hostname could not be resolved within the time limit.", ()
     except (ValueError, OSError):
-        return None
+        return None, ()
 
+    resolved: list[str] = []
     for _family, _type, _proto, _canon, sockaddr in infos:
         try:
             ip = ipaddress.ip_address(sockaddr[0])
         except ValueError:
             continue
+        resolved.append(str(ip))
         blocked = _ip_is_blocked(ip)
         if blocked:
-            return blocked
+            return blocked, tuple(dict.fromkeys(resolved))
 
-    if not infos:
-        return "URL hostname did not resolve to any address."
+    if not infos or not resolved:
+        return "URL hostname did not resolve to any address.", ()
 
-    return None
+    return None, tuple(dict.fromkeys(resolved))
+
+
+async def resolve_public_ips(
+    hostname: str,
+) -> tuple[bool, str | None, tuple[str, ...]]:
+    """Resolve and validate *hostname*, returning the exact usable IPs."""
+    reason, resolved = await _hostname_is_blocked(hostname)
+    if reason:
+        return False, reason, ()
+    if not resolved:
+        return False, "URL hostname did not resolve to any address.", ()
+    return True, None, resolved
 
 
 async def validate_url(url: str) -> ValidationResult:
@@ -205,11 +229,11 @@ async def validate_url(url: str) -> ValidationResult:
     if not hostname:
         return ValidationResult(False, "URL has no hostname.")
 
-    blocked_reason = await _hostname_is_blocked(hostname)
+    blocked_reason, resolved_ips = await _hostname_is_blocked(hostname)
     if blocked_reason:
-        return ValidationResult(False, blocked_reason)
+        return ValidationResult(False, blocked_reason, resolved_ips)
 
-    return ValidationResult(True, None)
+    return ValidationResult(True, None, resolved_ips)
 
 
 async def normalize_and_validate(raw_url: str) -> tuple[str | None, str | None]:

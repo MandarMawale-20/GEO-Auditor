@@ -8,6 +8,7 @@
 - Honors full `robots.txt` `Allow`/`Disallow` rules (longest match, wildcards, `$`), skips assets/queries/utility pages, validates canonicals, and excludes internal `noindex`/`none` pages from scoring. Excluded pages are counted separately from crawl failures.
 - Distinguishes a missing `robots.txt` (4xx, empty, or absent) from an unevaluable one (5xx, 429, timeout, TLS/DNS failure); the latter produces `unknown` crawler checks instead of a full pass.
 - Fetches with bounded concurrency under a shared monotonic deadline. Per-page timeout, total budget exhaustion, and page exceptions are isolated and reported separately.
+- Every outbound fetch pins the validated DNS addresses for the actual TCP connection and revalidates/re-pins redirects, closing the DNS-rebinding window. `robots.txt` is re-fetched when the homepage redirects to a different origin.
 - Sitemap hints and child sitemaps are capped and restricted to the audited site (including subdomains only when explicitly enabled).
 - Aggregates checks with the homepage weighted 2× and internal pages 1×. `NOT_APPLICABLE` and `UNKNOWN` pages are excluded from coverage denominators; unknown is never turned into failure.
 
@@ -24,7 +25,7 @@
 
 - API default is single-page. `pages` accepts 1–10 and is capped by `CRAWL_MAX_PAGES`.
 - Reports include page summaries, crawl counts, `points_evaluated`, and `partial` coverage disclosure.
-- Shared URLs are stateless (gzip + base64url in the hash). A 64k-character sizing guard compacts presentation-only duplicates, then page summaries, if a URL would become impractically long.
+- Shared URLs are stateless (gzip + base64url in the hash). A 64k-character sizing guard compacts presentation-only duplicates, then page summaries, if a URL would become impractically long. If even the compact form exceeds the cap, the API returns `share_url: null` and a temporary `report_view_path` instead of an unusable URL.
 - Shared-report payloads are treated as untrusted: numeric fields, grades, severities, page links, and non-array collections are validated before rendering.
 - The roadmap sorts by impact/effort, points recoverable, affected-page importance (homepage 2×), then deterministic `check_id`.
 - Unknown checks are excluded from the roadmap.

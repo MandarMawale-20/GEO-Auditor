@@ -26,31 +26,71 @@
 
   function formatNum(n) {
     const num = Number(n);
-    if (Number.isNaN(num)) return "0";
+    if (!Number.isFinite(num)) return "0";
     return (Math.round(num * 10) / 10).toString();
   }
 
+  function safeNumber(value, fallback) {
+    const num = Number(value);
+    return Number.isFinite(num) ? num : fallback;
+  }
+
+  function asArray(value) {
+    return Array.isArray(value) ? value : [];
+  }
+
+  // Shared-report payloads come straight from the URL hash, not from the
+  // server's Pydantic validation. Treat every field as untrusted.
+  function safeSeverity(value) {
+    return value === "critical" || value === "warning" || value === "pass" || value === "info"
+      ? value
+      : "info";
+  }
+
+  function safeGrade(value) {
+    const grade = String(value || "").toLowerCase();
+    return /^[a-f]$/.test(grade) ? grade : "f";
+  }
+
+  function safeHref(value) {
+    try {
+      const url = new URL(String(value || ""), window.location.href);
+      return url.protocol === "http:" || url.protocol === "https:" ? url.href : "";
+    } catch (e) {
+      return "";
+    }
+  }
+
   function pctOf(report) {
-    const max = report.max_score || 100;
-    return max ? Math.round((report.total_score / max) * 100) : 0;
+    const max = safeNumber(report.max_score, 100);
+    const total = safeNumber(report.total_score, 0);
+    if (max <= 0) return 0;
+    return Math.max(0, Math.min(100, Math.round((total / max) * 100)));
   }
 
   // New reports include all_findings; compact share payloads may omit it.
   // Section findings are the canonical projection, so reconstruct when needed.
   function allFindings(report) {
     if (Array.isArray(report.all_findings) && report.all_findings.length) {
-      return report.all_findings;
+      return report.all_findings.filter(function (f) {
+        return f && typeof f === "object";
+      });
     }
     const findings = [];
-    (report.sections || []).forEach(function (section) {
-      (section.findings || []).forEach(function (f) { findings.push(f); });
+    asArray(report.sections).forEach(function (section) {
+      asArray(section && section.findings).forEach(function (f) {
+        if (f && typeof f === "object") findings.push(f);
+      });
     });
     return findings;
   }
 
   function scopeLabel(report) {
     if (report.audit_scope === "site") {
-      const n = report.pages_audited || (report.pages || []).length || 1;
+      const n = safeNumber(
+        report.pages_audited,
+        asArray(report.pages).length || 1
+      );
       return "Site audit · " + n + (n === 1 ? " page" : " pages");
     }
     return "Audited URL";
@@ -77,14 +117,15 @@
 
   function severityBadge(sev) {
     const map = { critical: "badge-danger", warning: "badge-warning", pass: "badge-success", info: "badge-info" };
-    const cls = map[sev] || "badge-ghost";
-    return '<span class="badge ' + cls + '" style="font-size:0.62rem;">' + esc(String(sev || "").toUpperCase()) + "</span>";
+    const safe = safeSeverity(sev);
+    const cls = map[safe];
+    return '<span class="badge ' + cls + '" style="font-size:0.62rem;">' + esc(String(safe).toUpperCase()) + "</span>";
   }
 
   function findingCard(f) {
     const pages = pageCountText(f);
     return (
-      '<div class="finding ' + f.severity + '">' +
+      '<div class="finding ' + safeSeverity(f.severity) + '">' +
         '<div class="finding-header">' +
           severityBadge(f.severity) +
           '<h3 class="finding-title">' + esc(f.title) + "</h3>" +
@@ -102,9 +143,10 @@
   }
 
   function findingAccordion(f) {
-    if (f.severity !== "pass" && f.severity !== "info") {
+    const sev = safeSeverity(f.severity);
+    if (sev !== "pass" && sev !== "info") {
       return (
-        '<div class="finding ' + f.severity + '" style="padding:0.75rem; margin-bottom:0.5rem;">' +
+        '<div class="finding ' + sev + '" style="padding:0.75rem; margin-bottom:0.5rem;">' +
           '<div class="finding-header">' +
             severityBadge(f.severity) +
             '<span class="finding-title" style="font-size:0.92rem;">' + esc(f.title) + "</span>" +
@@ -118,7 +160,7 @@
       );
     }
     return (
-      '<div class="finding ' + f.severity + '" style="padding:0.75rem; margin-bottom:0.5rem;">' +
+      '<div class="finding ' + sev + '" style="padding:0.75rem; margin-bottom:0.5rem;">' +
         '<div class="finding-header">' +
           severityBadge(f.severity) +
           '<span class="finding-title" style="font-size:0.92rem;">' + esc(f.title) + "</span>" +
@@ -181,48 +223,63 @@
 
   function renderReport(report) {
     const root = document.getElementById("report-root");
-    if (!root || !report) return;
+    if (!root || !report || typeof report !== "object" || Array.isArray(report)) return;
 
     const pct = pctOf(report);
-    const finalUrl = report.final_url || report.url;
-    const reportId = report.report_id;
+    const finalUrl = String(report.final_url || report.url || "");
+    const maxScore = Math.max(1, safeNumber(report.max_score, 100));
+    const totalScore = safeNumber(report.total_score, 0);
+    const grade = safeGrade(report.grade);
+    const auditDurationMs = safeNumber(report.audit_duration_ms, 0);
+    const reportId = typeof report.report_id === "string" ? report.report_id : "";
     const circleOffset = 276.46 * (1 - pct / 100);
 
     const findings = allFindings(report);
     const criticalCount = findings.filter((f) => f.severity === "critical").length;
     const warningCount = findings.filter((f) => f.severity === "warning").length;
     const passCount = findings.filter((f) => f.severity === "pass").length;
-    const sectionCount = (report.sections || []).length;
-    const pages = Array.isArray(report.pages) ? report.pages : [];
-    const pagesAudited = report.pages_audited != null ? report.pages_audited : (pages.length || 1);
-    const pointsEvaluated = report.points_evaluated != null ? report.points_evaluated : report.max_score;
-    const isPartial = !!report.partial || pointsEvaluated < (report.max_score || 100);
+    const sections = asArray(report.sections).filter(function (section) {
+      return section && typeof section === "object";
+    });
+    const sectionCount = sections.length;
+    const pages = asArray(report.pages).filter(function (p) {
+      return p && typeof p === "object";
+    });
+    const pagesAudited = report.pages_audited != null
+      ? safeNumber(report.pages_audited, pages.length || 1)
+      : (pages.length || 1);
+    const pointsEvaluated = report.points_evaluated != null
+      ? safeNumber(report.points_evaluated, maxScore)
+      : maxScore;
+    const isPartial = !!report.partial || pointsEvaluated < maxScore;
 
     const summaryLines = [];
-    for (const s of report.sections || []) {
-      for (const f of s.findings || []) {
-        if (f.severity === "critical" || f.severity === "warning") {
+    for (const s of sections) {
+      for (const f of asArray(s && s.findings)) {
+        if (f && (f.severity === "critical" || f.severity === "warning")) {
           summaryLines.push("[" + String(f.severity).toUpperCase() + "] " + f.title);
         }
       }
     }
     const summaryText =
       "GEO Audit — " + finalUrl +
-      "\nScore " + Math.floor(report.total_score) + "/" + report.max_score + " (" + report.grade + ")" +
+      "\nScore " + Math.floor(totalScore) + "/" + maxScore + " (" + grade + ")" +
       "\n\nFindings:\n" + summaryLines.join("\n");
 
     const shareUrl = (window.location.hash || "").replace(/^#/, "");
 
-    const topPriorities = (report.top_priorities && report.top_priorities.length)
-      ? report.top_priorities
+    const topPriorities = (Array.isArray(report.top_priorities) && report.top_priorities.length)
+      ? report.top_priorities.filter(function (f) { return f && typeof f === "object"; })
       : findings.filter(function (f) { return f.severity === "critical" || f.severity === "warning"; }).slice(0, 3);
     const topPrioritiesHtml = topPriorities.map(findingCard).join("");
 
-    const sectionsHtml = (report.sections || [])
+    const sectionsHtml = sections
       .map(function (section, i) {
-        const sp = Math.round(section.points_possible > 0 ? (section.points_awarded / section.points_possible) * 100 : 0);
+        const possible = safeNumber(section && section.points_possible, 0);
+        const awarded = safeNumber(section && section.points_awarded, 0);
+        const sp = Math.max(0, Math.min(100, Math.round(possible > 0 ? (awarded / possible) * 100 : 0)));
         const barColor = sp >= 75 ? "var(--success)" : sp >= 40 ? "var(--warning)" : "var(--danger)";
-        const findingsHtml = (section.findings || []).map(findingAccordion).join("");
+        const findingsHtml = asArray(section && section.findings).map(findingAccordion).join("");
         const aiBadge = section.llm_enhanced
           ? '<span class="badge badge-info" style="font-size:0.62rem;">AI</span>'
           : "";
@@ -254,7 +311,10 @@
       })
       .join("");
 
-    const matrixHtml = (report.answerability_matrix || []).length
+    const matrixRows = asArray(report.answerability_matrix).filter(function (row) {
+      return row && typeof row === "object";
+    });
+    const matrixHtml = matrixRows.length
       ? '<section class="reveal" style="margin-bottom:2.5rem;">' +
         "<h2>AI answerability matrix</h2>" +
         '<p class="muted" style="margin-bottom:1.25rem; font-size:0.9rem;">Whether your content answers common AI-search questions.</p>' +
@@ -264,12 +324,12 @@
         '<th style="text-align:left; padding:0.6rem 0.75rem; color:var(--text-muted); font-family:var(--font-mono); font-size:0.7rem; font-weight:600; text-transform:uppercase; letter-spacing:0.06em;">Status</th>' +
         '<th style="text-align:left; padding:0.6rem 0.75rem; color:var(--text-muted); font-family:var(--font-mono); font-size:0.7rem; font-weight:600; text-transform:uppercase; letter-spacing:0.06em;">Evidence</th>' +
         "</tr></thead><tbody>" +
-        report.answerability_matrix.map(matrixRow).join("") +
+        matrixRows.map(matrixRow).join("") +
         "</tbody></table></div></section>"
       : "";
 
-    const roadmapFindings = (report.priority_roadmap && report.priority_roadmap.length)
-      ? report.priority_roadmap
+    const roadmapFindings = (Array.isArray(report.priority_roadmap) && report.priority_roadmap.length)
+      ? report.priority_roadmap.filter(function (f) { return f && typeof f === "object"; })
       : findings.filter(function (f) {
           return f.severity === "critical" || f.severity === "warning";
         });
@@ -288,7 +348,9 @@
         '<div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:0.75rem;">' + passFindings.map(passCheck).join("") + "</div></section>"
       : "";
 
-    const fh = report.fetch_health;
+    const fh = report.fetch_health && typeof report.fetch_health === "object"
+      ? report.fetch_health
+      : null;
     const diagHtml = fh
       ? '<section class="reveal" style="margin-bottom:2.5rem;"><h2>Fetch diagnostics</h2>' +
         '<div class="stats-row" style="margin-top:0;">' +
@@ -314,8 +376,9 @@
       : "";
 
     const partialHtml = isPartial
-      ? '<div class="banner banner-warning" style="margin-bottom:2rem;"><span class="banner-icon">◐</span><div class="banner-content"><div class="banner-title">Partial coverage</div><div class="banner-text">This score evaluates <strong>' + formatNum(pointsEvaluated) + " of " + esc(report.max_score || 100) + " possible points</strong>. Unknown or unreachable checks are disclosed, not counted as failures. " +
+      ? '<div class="banner banner-warning" style="margin-bottom:2rem;"><span class="banner-icon">◐</span><div class="banner-content"><div class="banner-title">Partial coverage</div><div class="banner-text">This score evaluates <strong>' + formatNum(pointsEvaluated) + " of " + formatNum(maxScore) + " possible points</strong>. Unknown or unreachable checks are disclosed, not counted as failures. " +
         (report.crawl_stats && report.crawl_stats.failed ? esc(report.crawl_stats.failed) + " page(s) could not be audited. " : "") +
+        (report.crawl_stats && report.crawl_stats.excluded ? esc(report.crawl_stats.excluded) + " page(s) excluded as noindex. " : "") +
         (report.pages_discovered ? "Discovered " + esc(report.pages_discovered) + " internal candidate pages. " : "") +
         "</div></div></div>"
       : "";
@@ -331,12 +394,18 @@
         '<th style="text-align:left; padding:0.6rem 0.75rem; color:var(--text-muted); font-family:var(--font-mono); font-size:0.7rem; font-weight:600; text-transform:uppercase; letter-spacing:0.06em;">Status</th>' +
         "</tr></thead><tbody>" +
         pages.map(function (p) {
+          const pageUrl = String(p.final_url || p.url || "");
+          const pageHref = safeHref(pageUrl);
+          const pageLabel = esc(pageUrl);
           const status = p.error
             ? (p.error === "noindex_excluded" ? "Excluded (noindex)" : "Not evaluated: " + p.error)
             : "Audited";
           const color = p.error ? "var(--warning)" : "var(--success)";
           return "<tr style=\"border-bottom:1px solid var(--border-soft);\">" +
-            '<td style="padding:0.55rem 0.75rem; max-width:32rem; overflow-wrap:anywhere;"><a href="' + esc(p.final_url || p.url) + '" target="_blank" rel="noopener">' + esc(p.final_url || p.url) + "</a>" +
+            '<td style="padding:0.55rem 0.75rem; max-width:32rem; overflow-wrap:anywhere;">' +
+              (pageHref
+                ? '<a href="' + esc(pageHref) + '" target="_blank" rel="noopener noreferrer">' + pageLabel + "</a>"
+                : "<span>" + pageLabel + "</span>") +
               (p.selected_reason ? '<div class="muted" style="font-size:0.74rem;">' + esc(p.selected_reason) + "</div>" : "") +
             "</td>" +
             '<td style="padding:0.55rem 0.75rem; font-size:0.82rem;">' + esc(p.role || "internal") + "</td>" +
@@ -356,7 +425,7 @@
             '<div class="report-url">' + esc(finalUrl) + "</div>" +
           "</div><div class=\"stat-value-container\">" +
             '<span class="report-label">Score</span>' +
-            '<div style="font-family:var(--font-display); font-size:1.6rem; font-weight:500; color:var(--text); line-height:1;">' + Math.floor(report.total_score) + " / " + report.max_score + "</div>" +
+            '<div style="font-family:var(--font-display); font-size:1.6rem; font-weight:500; color:var(--text); line-height:1;">' + Math.floor(totalScore) + " / " + formatNum(maxScore) + "</div>" +
           "</div></div>" +
         "</div>" +
         "<section>" +
@@ -367,9 +436,9 @@
                   '<circle cx="50" cy="50" r="42" fill="none" stroke="var(--border)" stroke-width="4"/>' +
                   '<circle class="progress-ring__circle" cx="50" cy="50" r="42" fill="none" stroke="var(--accent)" stroke-width="4" stroke-dasharray="276.46 276.46" stroke-dashoffset="276.46" data-target-offset="' + circleOffset.toFixed(2) + '" style="transition: stroke-dashoffset 1100ms cubic-bezier(.16,1,.3,1) 200ms;"></circle>' +
                 "</svg>" +
-                '<div class="score-text"><span class="score-num" data-count-to="' + Math.floor(report.total_score) + '">0</span><span class="score-max">/ ' + report.max_score + "</span></div>" +
+                '<div class="score-text"><span class="score-num" data-count-to="' + Math.floor(totalScore) + '">0</span><span class="score-max">/ ' + formatNum(maxScore) + "</span></div>" +
               "</div>" +
-              '<div><span class="stamp stamp-lg grade-' + esc(report.grade.toLowerCase()) + ' anim-in" style="animation-delay:0.3s;">' + esc(report.grade) + "</span></div>" +
+              '<div><span class="stamp stamp-lg grade-' + grade + ' anim-in" style="animation-delay:0.3s;">' + esc(grade.toUpperCase()) + "</span></div>" +
               "<div>" +
                 '<div class="grade-label" style="font-size:1.05rem; color:var(--text); font-weight:600;">' + esc(report.grade_label) + "</div>" +
                 '<div class="muted" style="font-size:0.85rem; margin-top:0.2rem;">' + pct + "% of AI answerability signals met</div>" +
@@ -378,7 +447,7 @@
             '<div style="margin-left:auto; min-width:200px; text-align:right;">' +
               '<div class="muted" style="font-size:0.8rem; font-family:var(--font-mono);">' +
                 '<div style="margin-bottom:0.3rem;">Audited ' + esc(formatDate(report.generated_at)) + "</div>" +
-                '<div style="margin-bottom:0.3rem;">Completed in ' + Math.floor(report.audit_duration_ms) + " ms</div>" +
+                '<div style="margin-bottom:0.3rem;">Completed in ' + Math.floor(auditDurationMs) + " ms</div>" +
                 "<div>" + (report.llm_enhanced ? "AI-enhanced analysis" : "Deterministic scoring") + "</div>" +
               "</div>" +
             "</div>" +
@@ -393,7 +462,7 @@
           '<div class="stats-row reveal" style="margin-bottom:2.5rem;">' +
             '<div class="stat-item"><div class="stat-value">' + sectionCount + '</div><div class="stat-label">Categories</div></div>' +
             (report.audit_scope === "site" || pagesAudited > 1
-              ? '<div class="stat-item"><div class="stat-value">' + pagesAudited + '</div><div class="stat-label">Pages</div></div>'
+              ? '<div class="stat-item"><div class="stat-value">' + formatNum(pagesAudited) + '</div><div class="stat-label">Pages</div></div>'
               : "") +
             (report.audit_scope === "site" || isPartial
               ? '<div class="stat-item"><div class="stat-value">' + formatNum(pointsEvaluated) + '</div><div class="stat-label">Points evaluated</div></div>'
@@ -407,7 +476,7 @@
           ? '<section class="reveal" style="margin-bottom:2.5rem;"><h2>Top 3 priorities for Monday morning</h2><p class="muted" style="margin-bottom:1.25rem; font-size:0.9rem;">Highest impact, lowest effort. Fix these first.</p><div class="grid-2">' + topPrioritiesHtml + "</div></section>"
           : "") +
         '<section class="reveal" style="margin-bottom:2.5rem;"><h2>Score breakdown</h2>' +
-          '<p class="muted" style="margin-bottom:1.25rem; font-size:0.9rem;">10 categories across ' + report.max_score + " possible points.</p>" +
+          '<p class="muted" style="margin-bottom:1.25rem; font-size:0.9rem;">10 categories across ' + formatNum(maxScore) + " possible points.</p>" +
           '<div style="display:flex; flex-direction:column; gap:0.5rem;">' + sectionsHtml + "</div></section>" +
         pagesHtml +
         matrixHtml +
@@ -459,7 +528,7 @@
       return;
     }
     const data = await decodeShareHash(hash);
-    if (!data) {
+    if (!data || typeof data !== "object" || Array.isArray(data)) {
       root.innerHTML = '<div class="empty-state"><div class="empty-icon">⚠</div><p>Failed to decode shared report. Please ensure you are using a modern browser.</p></div>';
       return;
     }
@@ -606,11 +675,30 @@
             // share_url is an absolute URL. Handle a bare hash fragment too
             // (older API responses) by resolving it relative to the report
             // viewer.
-            let share = data.share_url || "";
-            if (share && !/^https?:/i.test(share)) {
-              share = "report.html#" + share.replace(/^#/, "");
+            let share = typeof data.share_url === "string" ? data.share_url : "";
+            if (share) {
+              if (!/^https?:/i.test(share)) {
+                share = "report.html#" + share.replace(/^#/, "");
+              }
+              window.location.href = share;
+              return;
             }
-            window.location.href = share;
+
+            // An oversized report cannot fit in a stateless hash. Open the
+            // temporary server-side viewer rather than navigating to an
+            // empty/invalid URL.
+            const viewPath = typeof data.report_view_path === "string"
+              ? data.report_view_path
+              : "";
+            if (/^\/report\/view\/[A-Za-z0-9_-]+$/.test(viewPath)) {
+              window.location.href = API_BASE + viewPath + "?too_large=1";
+              return;
+            }
+
+            showFormError(
+              data.share_error ||
+              "Audit completed, but the report could not be opened. Please try again."
+            );
             return;
           }
           showFormError((data && (data.detail || data.message)) || "Audit failed. Please try again.");

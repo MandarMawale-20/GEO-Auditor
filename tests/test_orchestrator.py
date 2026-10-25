@@ -126,6 +126,52 @@ def _decode_share(encoded: str) -> dict:
 
 
 @pytest.mark.asyncio
+async def test_robots_is_refetched_when_homepage_crosses_origins(monkeypatch) -> None:
+    calls: list[str] = []
+
+    async def fake_fetch(url):
+        return _fetch_result(url, HOME_HTML).model_copy(
+            update={"final_url": "https://example.net/"}
+        )
+
+    async def fake_robots(url):
+        calls.append(url)
+        return RobotsRules(exists=False)
+
+    monkeypatch.setattr(orchestrator, "fetch_html", fake_fetch)
+    monkeypatch.setattr(orchestrator, "get_robots_rules", fake_robots)
+    monkeypatch.setattr(orchestrator, "get_sitemap_info", _fake_sitemap)
+    monkeypatch.setattr(orchestrator.entity_engine, "score_trust_pages", _fake_trust)
+
+    await orchestrator.run_audit(HOME, max_pages=1)
+
+    assert calls == [HOME, "https://example.net/"]
+
+
+@pytest.mark.asyncio
+async def test_robots_is_not_refetched_for_apex_www_equivalent(monkeypatch) -> None:
+    calls: list[str] = []
+
+    async def fake_fetch(url):
+        return _fetch_result(url, HOME_HTML).model_copy(
+            update={"final_url": "https://www.example.com/"}
+        )
+
+    async def fake_robots(url):
+        calls.append(url)
+        return RobotsRules(exists=False)
+
+    monkeypatch.setattr(orchestrator, "fetch_html", fake_fetch)
+    monkeypatch.setattr(orchestrator, "get_robots_rules", fake_robots)
+    monkeypatch.setattr(orchestrator, "get_sitemap_info", _fake_sitemap)
+    monkeypatch.setattr(orchestrator.entity_engine, "score_trust_pages", _fake_trust)
+
+    await orchestrator.run_audit(HOME, max_pages=1)
+
+    assert calls == [HOME]
+
+
+@pytest.mark.asyncio
 async def test_single_page_report_contract(monkeypatch) -> None:
     _install_fakes(monkeypatch)
     report = await orchestrator.run_audit(HOME, max_pages=1)
@@ -278,11 +324,13 @@ async def test_share_payload_roundtrips_and_excludes_detail(monkeypatch) -> None
     _install_fakes(monkeypatch)
     report = await orchestrator.run_audit(HOME, max_pages=2)
 
-    from app.main import encode_report_for_share
-
-    encoded = encode_report_for_share(report)
+    import app.main as main_module
     from app.config import MAX_SHARE_PAYLOAD_BYTES
 
+    prepared = main_module.prepare_share_payload(report)
+    assert prepared.too_large is False
+    encoded = main_module.encode_report_for_share(report)
+    assert encoded == prepared.encoded
     assert len(encoded) <= MAX_SHARE_PAYLOAD_BYTES
     data = _decode_share(encoded)
     restored = AuditReport.model_validate(data)
@@ -295,10 +343,10 @@ async def test_share_payload_roundtrips_and_excludes_detail(monkeypatch) -> None
 
     # A tight cap drops presentation duplicates first, then page summaries,
     # while keeping scoring sections/findings intact.
-    import app.main as main_module
-
     monkeypatch.setattr(main_module, "MAX_SHARE_PAYLOAD_BYTES", 1)
-    compact = _decode_share(main_module.encode_report_for_share(report))
+    oversized = main_module.prepare_share_payload(report)
+    assert oversized.too_large is True
+    compact = _decode_share(oversized.encoded)
     assert compact["all_findings"] == []
     assert compact["priority_roadmap"] == []
     assert compact["pages"] == []
