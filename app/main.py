@@ -107,7 +107,8 @@ app.add_middleware(SlowAPIMiddleware)
 @app.exception_handler(RateLimitExceeded)
 async def rate_limit_handler(request: Request, exc: RateLimitExceeded) -> Response:
     """Branded 429 for browser requests, JSON for API clients."""
-    logger.warning("Rate limit exceeded for %s on %s", request.client.host, request.url.path)
+    client_host = request.client.host if request.client else "unknown"
+    logger.warning("Rate limit exceeded for %s on %s", client_host, request.url.path)
 
     accept = request.headers.get("accept", "")
     if "text/html" in accept:
@@ -180,6 +181,11 @@ async def log_requests(request: Request, call_next):
 # without re-running the audit. 1h TTL, max 1000 entries; cleared on restart.
 REPORT_CACHE: TTLCache = TTLCache(maxsize=1000, ttl=3600)
 
+# Legacy shared-report re-encoding accepts arbitrary JSON. Cap it well above
+# real report sizes so an unauthenticated request cannot force huge parses or
+# gzip work.
+_MAX_SHARED_REPORT_BYTES = 1_000_000
+
 
 @app.get("/health")
 async def health() -> JSONResponse:
@@ -246,7 +252,17 @@ async def render_shared_report(request: Request) -> RedirectResponse:
     Decoding and rendering happen client-side; the server just produces a
     shareable URL hash fragment.
     """
+    content_length = request.headers.get("content-length")
+    if (
+        content_length
+        and content_length.isdigit()
+        and int(content_length) > _MAX_SHARED_REPORT_BYTES
+    ):
+        raise HTTPException(status_code=413, detail="Report payload is too large.")
+
     raw_body = await request.body()
+    if len(raw_body) > _MAX_SHARED_REPORT_BYTES:
+        raise HTTPException(status_code=413, detail="Report payload is too large.")
     try:
         data = json.loads(raw_body)
         report = AuditReport.model_validate(data)

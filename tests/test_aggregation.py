@@ -18,6 +18,7 @@ SITE_SPECS = [
 ]
 HOME = "https://example.com"
 PRICING = "https://example.com/pricing"
+ABOUT = "https://example.com/about"
 
 
 def _check(spec, url, *, status=CheckStatus.PASS, points=None, metrics=None, title=None):
@@ -142,6 +143,19 @@ def test_coverage_weights_reverse() -> None:
     assert js.points_awarded == round(5 * (1 / 3), 2)
 
 
+def test_coverage_partial_title_does_not_claim_zero_pages_passed() -> None:
+    sections = _aggregate(
+        {
+            HOME: {"js.raw_text": {"status": CheckStatus.PARTIAL, "points": 2.5}},
+            PRICING: {"js.raw_text": {"status": CheckStatus.PARTIAL, "points": 2.5}},
+        }
+    )
+    js = _by_id(sections)["js.raw_text"]
+    assert js.status == CheckStatus.PARTIAL
+    assert "partially met on 2 applicable pages" in js.title
+    assert any("2 were partial or failed" in line for line in js.evidence)
+
+
 def test_unknown_is_never_turned_into_failure() -> None:
     unknown = {"status": CheckStatus.UNKNOWN, "points": 0}
     sections = _aggregate({HOME: {"js.raw_text": unknown}, PRICING: {"js.raw_text": unknown}})
@@ -246,6 +260,26 @@ def test_consistency_conflicting_fingerprints_fails() -> None:
     assert org.status == CheckStatus.FAIL
     assert org.points_awarded == 0
     assert len(org.affected_pages) >= 2
+
+
+def test_consistency_conflict_counts_majority_and_minority_pages() -> None:
+    sections = _aggregate(
+        {
+            HOME: {},
+            PRICING: {},
+            ABOUT: {
+                "entity.org_schema": {
+                    "metrics": {"fingerprint": "different"},
+                }
+            },
+        }
+    )
+    org = _by_id(sections)["entity.org_schema"]
+    assert org.status == CheckStatus.FAIL
+    assert org.pages_passed == 2
+    assert org.pages_failed == 1
+    assert org.pages_total == 3
+    assert len(org.affected_pages) == 3
 
 
 def test_consistency_all_unknown_stays_unknown() -> None:

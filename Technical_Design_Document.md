@@ -97,7 +97,7 @@ GEO Auditor is built with **FastAPI**, **httpx**, **BeautifulSoup**, **Pydantic*
 
 ### Core Flow
 
-1. Fetch page HTML and `robots.txt` concurrently, then discover `sitemap.xml` (including robots.txt hints).
+1. Fetch page HTML and `robots.txt` concurrently, then discover `sitemap.xml` (including robots.txt hints). Sitemap hints/children are capped and restricted to the audited site; a 5xx or transport failure for `robots.txt` is `UNKNOWN`, while 4xx/empty is treated as no restrictions.
 2. Parse the HTML once.
 3. Run independent scoring engines for the homepage.
 4. For `pages>1`, build a deterministic crawl plan from homepage links and sitemap URLs, filter by same-host scope/robots.txt/assets/queries, fetch under a shared monotonic deadline, and audit each page in isolation.

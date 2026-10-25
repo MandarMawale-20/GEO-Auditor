@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import time
 import uuid
 from datetime import datetime, timezone
@@ -41,7 +42,7 @@ from app.services.crawl import (
 )
 from app.services.fetcher import fetch_html
 from app.services.html_utils import ParsedPage, parse_html
-from app.services.robots import get_robots_rules
+from app.services.robots import RobotsRules, get_robots_rules
 from app.services.sitemap import SitemapResult, get_sitemap_info
 from app.services.url_validator import normalize_url
 
@@ -68,6 +69,14 @@ PAGE_SCOPED_POINTS: float = round(
     ),
     2,
 )
+
+# Robots tokens are comma/space separated. ``none`` is the legacy shorthand
+# for ``noindex, nofollow`` and must be treated like an explicit noindex.
+_NOINDEX_RE = re.compile(r"(?:^|[\s,;:])(?:noindex|none)(?=$|[\s,;:])", re.IGNORECASE)
+
+
+def _is_noindex(value: str | None) -> bool:
+    return bool(value and _NOINDEX_RE.search(value))
 
 
 def _health_from_result(result) -> FetchHealth:
@@ -151,7 +160,7 @@ def _unreachable_report(raw_url: str, url: str, error_message: str, start: float
         pages_discovered=0,
         pages_audited=0,
         pages=[],
-        partial=False,
+        partial=True,
         points_evaluated=0,
         crawl_stats={},
     )
@@ -255,7 +264,7 @@ async def _audit_page(
     parsed = fetched.parsed
     assert parsed is not None
 
-    if fetched.role == "internal" and "noindex" in (parsed.meta_robots or ""):
+    if fetched.role == "internal" and _is_noindex(parsed.meta_robots):
         sections = _unknown_page_sections(
             "Page is marked noindex and was excluded from scoring.", page_url
         )
@@ -355,7 +364,10 @@ def _build_site_corpus(
         entries.append((fetched.url, fetched.parsed))
 
     if len(entries) == 1:
-        return entries[0][1].visible_text[:limit]
+        # All internal pages were noindex/unsuccessful. Treat this as the
+        # single-page case so query coverage still sees the full homepage,
+        # rather than silently truncating the corpus at 6k characters.
+        return entries[0][1].visible_text
 
     home_budget = int(limit * 0.6)
     remaining = limit - home_budget
@@ -384,17 +396,42 @@ async def run_audit(
     if not url:
         return _unreachable_report(raw_url, raw_url, "Empty or invalid URL provided.", start)
 
-    html_result, robots_rules = await asyncio.gather(
+    html_result, robots_result = await asyncio.gather(
         fetch_html(url),
         get_robots_rules(url),
+        return_exceptions=True,
     )
 
+    if isinstance(html_result, BaseException):
+        logger.error("Homepage fetch failed unexpectedly: %s", html_result, exc_info=True)
+        return _unreachable_report(
+            raw_url, url, f"Homepage fetch failed: {type(html_result).__name__}", start
+        )
     if not html_result.ok or not html_result.text:
         error_message = html_result.error or f"Site returned HTTP {html_result.status_code}."
         return _unreachable_report(raw_url, url, error_message, start)
 
+    if isinstance(robots_result, BaseException):
+        logger.error("robots.txt lookup failed unexpectedly: %s", robots_result, exc_info=True)
+        robots_rules = RobotsRules(
+            exists=False,
+            fetch_error=f"{type(robots_result).__name__}: {robots_result}",
+        )
+    else:
+        robots_rules = robots_result
+
     final_url = html_result.final_url or url
-    sitemap_info = await get_sitemap_info(final_url, sitemap_hints=robots_rules.sitemap_urls)
+    try:
+        sitemap_info = await get_sitemap_info(
+            final_url,
+            sitemap_hints=robots_rules.sitemap_urls,
+            include_subdomains=settings.crawl_include_subdomains,
+        )
+    except Exception as exc:  # noqa: BLE001 — sitemap failure must not kill the audit
+        logger.error("Sitemap lookup failed unexpectedly: %s", exc, exc_info=True)
+        sitemap_info = SitemapResult(
+            exists=False, fetch_error=f"{type(exc).__name__}: {exc}"
+        )
 
     try:
         homepage_parsed = await asyncio.to_thread(parse_html, html_result.text)
@@ -517,7 +554,9 @@ async def run_audit(
     # finding while the four crawler checks still own the 15 points.
     if not robots_rules.exists:
         for section in sections:
-            if section.key == "ai_crawler_accessibility":
+            if section.key == "ai_crawler_accessibility" and section.checks and all(
+                check.status == CheckStatus.PASS for check in section.checks
+            ):
                 section.findings = [
                     Finding(
                         category="ai_crawler_accessibility",
@@ -569,9 +608,16 @@ async def run_audit(
         )
 
     points_evaluated = round(sum(section.points_evaluated for section in sections), 2)
+    # A noindex page was fetched successfully but intentionally excluded. It
+    # must not be reported as a crawl failure alongside timeouts/HTTP errors.
+    excluded = sum(1 for audit in page_audits if audit.error == "noindex_excluded")
     succeeded = sum(1 for audit in page_audits if audit.error is None)
-    failed = len(page_audits) - succeeded
-    partial = bool(failed) or points_evaluated < TOTAL_POSSIBLE_SCORE
+    failed = sum(
+        1
+        for audit in page_audits
+        if audit.error is not None and audit.error != "noindex_excluded"
+    )
+    partial = bool(failed) or bool(excluded) or points_evaluated < TOTAL_POSSIBLE_SCORE
 
     crawl_stats: dict[str, int] = {
         "discovered": plan.discovered_count,
@@ -579,6 +625,7 @@ async def run_audit(
         "attempted": len(page_audits),
         "succeeded": succeeded,
         "failed": failed,
+        "excluded": excluded,
     }
     for reason, count in plan.skipped.items():
         crawl_stats[f"skipped_{reason}"] = count

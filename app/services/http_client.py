@@ -22,7 +22,7 @@ import socket
 import time
 from dataclasses import dataclass
 from typing import Optional
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import urljoin, urlsplit, urlunsplit
 
 import httpx
 
@@ -139,26 +139,21 @@ async def resolve_and_validate_ips(hostname: str) -> tuple[bool, Optional[str]]:
 
 
 def _resolve_location(base_url: str, location: str) -> str:
-    """Resolve a (possibly relative) redirect ``Location`` header against the base URL."""
+    """Resolve a (possibly relative) redirect ``Location`` header against the base URL.
+
+    ``urljoin`` implements RFC 3986 reference resolution, which matters for
+    query-only (``?page=2``), fragment-only, and ``../`` redirect targets.
+    A hand-rolled path append gets those cases wrong.
+    """
+    location = (location or "").strip()
     base_split = urlsplit(base_url)
     if not base_split.scheme or not base_split.netloc:
         return location  # Let httpx / validate_url sort it out.
-
-    # Build the base origin for relative resolution.
-    base_origin = f"{base_split.scheme}://{base_split.netloc}"
-
-    if location.startswith(("http://", "https://")):
-        return location
-
-    if location.startswith("//"):
-        return f"{base_split.scheme}:{location}"
-
-    if location.startswith("/"):
-        return f"{base_origin}{location}"
-
-    # Relative path — append to base path.
-    base_path = base_split.path.rstrip("/")
-    return f"{base_origin}{base_path}/{location}"
+    resolved = urljoin(base_url, location)
+    # Fragments are never sent to the server and a fragment-only redirect can
+    # otherwise loop on the same URL.
+    parts = urlsplit(resolved)
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, parts.query, ""))
 
 
 # ---------------------------------------------------------------------------
@@ -268,10 +263,21 @@ async def safe_get_text(
                 status = response.status_code
 
                 # --- Redirect handling with validation ---
-                if status in _REDIRECT_STATUS and allow_redirects and redirect_count < max_redirects:
-                    location = response.headers.get("location")
+                if status in _REDIRECT_STATUS and allow_redirects:
+                    if redirect_count >= max_redirects:
+                        return FetchResult(
+                            url=url,
+                            final_url=current_url,
+                            status_code=status,
+                            ok=False,
+                            error=f"Too many redirects (limit: {max_redirects}).",
+                            elapsed_ms=round((time.monotonic() - start) * 1000, 2),
+                            redirect_count=redirect_count,
+                        )
+
+                    location = (response.headers.get("location") or "").strip()
                     if not location:
-                        # No Location header — treat as a normal response.
+                        # No/empty Location header — treat as a normal response.
                         break
 
                     new_url = _resolve_location(current_url, location)

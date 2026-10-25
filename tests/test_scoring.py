@@ -1,8 +1,19 @@
 """Priority roadmap ordering and unknown exclusion."""
 from __future__ import annotations
 
-from app.models import EffortLevel, Finding, ImpactLevel, Severity
-from app.scoring import build_priority_roadmap, select_top_priorities
+from app.models import (
+    AnswerabilityStatus,
+    AuditSection,
+    EffortLevel,
+    Finding,
+    ImpactLevel,
+    Severity,
+)
+from app.scoring import (
+    build_answerability_matrix,
+    build_priority_roadmap,
+    select_top_priorities,
+)
 
 
 def _finding(check_id: str, affected_pages: list[str], severity=Severity.WARNING) -> Finding:
@@ -69,3 +80,22 @@ def test_top_priorities_uses_same_order() -> None:
     top = select_top_priorities(findings, limit=2, homepage_url=home)
     assert [f.check_id for f in top][0] == "affects.home"
     assert len(top) == 2
+
+
+def test_unknown_query_dimension_is_uncertain_not_a_failure() -> None:
+    section = AuditSection(
+        key="query_coverage",
+        label="Query Coverage",
+        group="Value and Freshness",
+        points_possible=15,
+        findings=[
+            _finding("query.what", [], severity=Severity.INFO),
+        ],
+    )
+    section.findings[0].dimension = "what"
+    section.findings[0].evidence = "query engine unavailable"
+
+    rows = build_answerability_matrix([section], "")
+    what = next(row for row in rows if row.question == "What does this company do?")
+    assert what.status == AnswerabilityStatus.PARTIAL
+    assert "Not evaluated" in what.evidence

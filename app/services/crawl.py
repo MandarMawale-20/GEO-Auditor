@@ -104,6 +104,15 @@ def site_hosts_from_url(final_url: str, include_subdomains: bool = False) -> set
     return hosts
 
 
+def _page_key(url: str) -> str:
+    """Stable same-page key ignoring query, fragment, and trailing slash."""
+    parts = urlsplit(url)
+    path = "/" + "/".join(seg for seg in parts.path.split("/") if seg)
+    if path != "/" and path.endswith("/"):
+        path = path[:-1]
+    return urlunsplit((parts.scheme.lower(), parts.netloc.lower(), path, "", ""))
+
+
 def _host_matches(host: str, site_hosts: set[str]) -> bool:
     host = host.lower().rstrip(".")
     if host in site_hosts:
@@ -167,7 +176,7 @@ def normalize_candidate_url(
         normalized_path = normalized_path[:-1]
 
     normalized = urlunsplit((parts.scheme, parts.netloc.lower(), normalized_path, "", ""))
-    if normalized.rstrip("/") == base_url.rstrip("/"):
+    if _page_key(normalized) == _page_key(base_url):
         return None, "homepage"
     return normalized, None
 
@@ -461,16 +470,18 @@ async def fetch_pages(
     # successful occurrence wins; failed fetches stay visible as failures.
     seen: set[str] = set()
     if homepage_url:
-        seen.add(homepage_url.rstrip("/"))
+        seen.add(_page_key(homepage_url))
     deduped: list[FetchedPage] = []
     for fetched in results:
         if not fetched.ok:
             deduped.append(fetched)
             continue
-        final = (fetched.result.final_url or fetched.url).rstrip("/")
+        final = _page_key(fetched.result.final_url or fetched.url)
         canonical = None
         if fetched.parsed and fetched.parsed.canonical_url:
-            canonical = urljoin(final, fetched.parsed.canonical_url).rstrip("/")
+            canonical = _page_key(
+                urljoin(fetched.result.final_url or fetched.url, fetched.parsed.canonical_url)
+            )
         key = canonical or final
         if key in seen:
             continue

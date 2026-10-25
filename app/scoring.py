@@ -51,7 +51,9 @@ def _affected_page_importance(finding: Finding, homepage_url: str | None) -> flo
     """
     pages = finding.affected_pages or []
     if not pages:
-        return 2.0 if (finding.pages_total or 0) > 1 else 1.0
+        # Site-wide findings affect the homepage-level experience. Treat them
+        # as homepage-weighted for deterministic priority ordering.
+        return 2.0
     home = (homepage_url or "").rstrip("/")
     return sum(
         2.0 if home and page.rstrip("/") == home else 1.0
@@ -117,6 +119,13 @@ def build_answerability_matrix(sections: list[AuditSection], page_text: str) -> 
                 question=question,
                 status=AnswerabilityStatus.YES,
                 evidence=finding.evidence,
+            ))
+        elif finding.severity == Severity.INFO:
+            # Unknown/unevaluated dimensions are uncertain, not failures.
+            rows.append(AnswerabilityRow(
+                question=question,
+                status=AnswerabilityStatus.PARTIAL,
+                evidence=f"Not evaluated: {finding.evidence}" if finding.evidence else "Not evaluated.",
             ))
         else:
             rows.append(AnswerabilityRow(

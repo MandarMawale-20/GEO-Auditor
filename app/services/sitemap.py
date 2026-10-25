@@ -8,6 +8,7 @@ request is made.
 """
 from __future__ import annotations
 
+import html
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -19,7 +20,38 @@ from app.utils import parse_iso_datetime
 _LASTMOD_RE = re.compile(r"<lastmod>\s*([^<\s]+)\s*</lastmod>", re.IGNORECASE)
 _LOC_RE = re.compile(r"<loc>\s*([^<\s]+)\s*</loc>", re.IGNORECASE)
 _MAX_CHILD_SITEMAPS = 3
+_MAX_SITEMAP_HINTS = 5
 _MAX_SITEMAP_URLS = 1000
+
+
+def _site_hosts(page_url: str, include_subdomains: bool = False) -> set[str]:
+    host = (urlparse(page_url).hostname or "").lower().rstrip(".")
+    if not host:
+        return set()
+    if host.startswith("www."):
+        hosts = {host, host[4:]}
+        base = host[4:]
+    else:
+        hosts = {host, f"www.{host}"}
+        base = host
+    if include_subdomains:
+        hosts.add(f".{base}")
+    return hosts
+
+
+def _same_site(url: str, hosts: set[str]) -> bool:
+    try:
+        host = (urlparse(url).hostname or "").lower().rstrip(".")
+    except ValueError:
+        return False
+    if not host:
+        return False
+    if host in hosts:
+        return True
+    return any(
+        allowed.startswith(".") and host.endswith(allowed)
+        for allowed in hosts
+    )
 
 
 @dataclass
@@ -37,7 +69,10 @@ async def _fetch_sitemap(url: str) -> tuple[list[str], datetime | None, str | No
     if not result.ok or not result.text:
         return [], None, result.error or "Sitemap unavailable."
 
-    locs = [urljoin(url, loc) for loc in _LOC_RE.findall(result.text)]
+    locs = [
+        urljoin(url, html.unescape(loc))
+        for loc in _LOC_RE.findall(result.text)
+    ]
     lastmods = [
         dt
         for raw in _LASTMOD_RE.findall(result.text)
@@ -48,14 +83,31 @@ async def _fetch_sitemap(url: str) -> tuple[list[str], datetime | None, str | No
 
 
 async def get_sitemap_info(
-    page_url: str, sitemap_hints: list[str] | None = None
+    page_url: str,
+    sitemap_hints: list[str] | None = None,
+    include_subdomains: bool = False,
 ) -> SitemapResult:
     """Try declared sitemap URLs first, then fall back to /sitemap.xml."""
     parsed = urlparse(page_url)
     if not parsed.scheme or not parsed.netloc:
         return SitemapResult(exists=False, fetch_error="Invalid base URL for sitemap lookup.")
 
-    candidates = list(sitemap_hints or [])
+    hosts = _site_hosts(page_url, include_subdomains)
+    if not hosts:
+        return SitemapResult(exists=False, fetch_error="Invalid base URL for sitemap lookup.")
+
+    # Only follow sitemap hints that stay on the audited site (apex/www
+    # equivalent). Otherwise a hostile robots.txt could make one audit fan out
+    # to an unbounded list of third-party hosts.
+    candidates: list[str] = []
+    for hint in sitemap_hints or []:
+        hint = (hint or "").strip()
+        if not hint or not _same_site(hint, hosts) or hint in candidates:
+            continue
+        candidates.append(hint)
+        if len(candidates) >= _MAX_SITEMAP_HINTS:
+            break
+
     default_sitemap = urljoin(f"{parsed.scheme}://{parsed.netloc}", "/sitemap.xml")
     if default_sitemap not in candidates:
         candidates.append(default_sitemap)
@@ -71,14 +123,30 @@ async def get_sitemap_info(
             continue
 
         urls: list[str] = []
-        # A sitemap index points at other sitemaps; expand a bounded number.
-        child_sitemaps = [loc for loc in locs if loc.lower().endswith((".xml", ".xml.gz"))]
+        # A sitemap index points at other sitemaps; expand a bounded number,
+        # still restricted to the audited hosts.
+        child_sitemaps = [
+            loc
+            for loc in locs
+            if loc.lower().endswith((".xml", ".xml.gz")) and _same_site(loc, hosts)
+        ]
         if child_sitemaps:
+            child_success = 0
             for child in child_sitemaps[:_MAX_CHILD_SITEMAPS]:
-                child_urls, child_lastmod, _err = await _fetch_sitemap(child)
+                child_urls, child_lastmod, child_err = await _fetch_sitemap(child)
+                if child_err:
+                    last_error = child_err
+                    continue
+                child_success += 1
                 urls.extend(child_urls)
                 if child_lastmod and (most_recent is None or child_lastmod > most_recent):
                     most_recent = child_lastmod
+            if child_success == 0:
+                # The index itself was reachable but none of its children
+                # were. Try the next candidate rather than returning an empty
+                # "found" sitemap.
+                last_error = last_error or "No child sitemap could be fetched."
+                continue
         else:
             urls.extend(locs)
 

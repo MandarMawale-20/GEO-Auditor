@@ -25,6 +25,9 @@ class RobotsRules:
 
     exists: bool = False
     fetch_error: str | None = None
+    # HTTP status from the robots.txt request. ``None`` means the request
+    # never completed (DNS/timeout/TLS), which is different from a 404.
+    fetch_status: int | None = None
     raw_text: str = ""
     # user_agent (lowercased) -> list of Disallow paths
     disallow_by_agent: dict[str, list[str]] = field(default_factory=dict)
@@ -140,13 +143,17 @@ async def get_robots_rules(page_url: str) -> RobotsRules:
     result = await safe_get_text(robots_url, allow_redirects=True, max_redirects=5)
 
     if not result.ok or not result.text:
-        # Missing robots.txt means "no restrictions" per spec.
-        return RobotsRules(exists=False, fetch_error=result.error)
+        return RobotsRules(
+            exists=False,
+            fetch_error=result.error,
+            fetch_status=result.status_code,
+        )
 
     disallow_by_agent, allow_by_agent, sitemaps = _parse_robots_txt(result.text, robots_url)
     return RobotsRules(
         exists=True,
         raw_text=result.text,
+        fetch_status=result.status_code,
         disallow_by_agent=disallow_by_agent,
         allow_by_agent=allow_by_agent,
         sitemap_urls=sitemaps,

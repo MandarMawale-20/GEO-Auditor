@@ -73,6 +73,15 @@ def test_trailing_slashes_are_normalized() -> None:
     assert url == "https://example.com/pricing"
 
 
+def test_homepage_with_query_is_still_recognized_as_homepage() -> None:
+    hosts = site_hosts_from_url(BASE)
+    url, reason = normalize_candidate_url(
+        f"{BASE}/?utm_source=newsletter", BASE, hosts
+    )
+    assert url is None
+    assert reason == "homepage"
+
+
 def test_discovery_is_deterministic_and_priority_ordered() -> None:
     parsed = _parsed(
         ("/pricing", 3),

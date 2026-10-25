@@ -200,7 +200,6 @@ def _aggregate_coverage(
     ]
     unknown = [c for c in page_checks if c.status == CheckStatus.UNKNOWN]
     not_applicable = [c for c in page_checks if c.status == CheckStatus.NOT_APPLICABLE]
-    statuses = {c.status for c in page_checks}
     pages_total = len(page_checks)
     pages_unknown = len(unknown)
 
@@ -269,9 +268,15 @@ def _aggregate_coverage(
 
     total_weight = sum(page_weights.get(c.page_url or "", 1.0) for c in evaluated) or 1.0
     ratio = sum(
-        page_weights.get(c.page_url or "", 1.0) * (c.points_awarded / c.points_possible)
+        page_weights.get(c.page_url or "", 1.0)
+        * (
+            max(0.0, min(1.0, c.points_awarded / c.points_possible))
+            if c.points_possible > 0
+            else 0.0
+        )
         for c in evaluated
     ) / total_weight
+    ratio = max(0.0, min(1.0, ratio))
     points = spec.points * ratio
 
     passed = [c for c in evaluated if c.status == CheckStatus.PASS]
@@ -311,15 +316,22 @@ def _aggregate_coverage(
         elif status == CheckStatus.FAIL:
             title = f"{label}: failed on {pages_failed} of {applicable} applicable pages"
         else:
-            title = f"{label}: passed on {pages_passed} of {applicable} applicable pages"
+            title = f"{label}: partially met on {applicable} applicable pages"
 
     evidence: list[str] = []
     if pages_total > 1:
         excluded = pages_total - applicable
-        evidence.append(
-            f"{pages_passed} of {applicable} applicable pages passed"
-            + (f" ({excluded} excluded as not applicable or unknown)." if excluded else ".")
-        )
+        if status == CheckStatus.PARTIAL:
+            evidence.append(
+                f"{pages_passed} of {applicable} applicable pages fully passed; "
+                f"{pages_failed} were partial or failed"
+                + (f" ({excluded} excluded as not applicable or unknown)." if excluded else ".")
+            )
+        else:
+            evidence.append(
+                f"{pages_passed} of {applicable} applicable pages passed"
+                + (f" ({excluded} excluded as not applicable or unknown)." if excluded else ".")
+            )
     for check in failed[:5]:
         detail = " ".join(check.evidence)[:240]
         evidence.append(f"{_short_url(check.page_url)}: {detail}".strip())
@@ -446,10 +458,24 @@ def _aggregate_consistency(
             ),
         )
 
-    fingerprints = {str(c.metrics.get("fingerprint", "")) for c in carriers}
-    consistent = len(fingerprints) == 1
+    fingerprint_values = [str(c.metrics.get("fingerprint", "")) for c in carriers]
+    counts: dict[str, int] = {}
+    for fingerprint in fingerprint_values:
+        counts[fingerprint] = counts.get(fingerprint, 0) + 1
+    # Use the majority identity as the reference so the page counts describe
+    # which pages disagree with the site's dominant entity, not whichever page
+    # happened to be crawled first.
+    reference_fingerprint = max(counts, key=counts.get)
+    base = next(
+        c for c in carriers
+        if str(c.metrics.get("fingerprint", "")) == reference_fingerprint
+    )
+    conflicting_checks = [
+        c for c in carriers
+        if str(c.metrics.get("fingerprint", "")) != reference_fingerprint
+    ]
+    consistent = len(counts) == 1
     if consistent:
-        base = carriers[0]
         return CheckResult(
             check_id=spec.check_id,
             category=spec.category,
@@ -472,12 +498,9 @@ def _aggregate_consistency(
             ),
         )
 
-    # Conflicting identities: report the pages that disagree.
-    base = carriers[0]
-    conflicting = [
-        c.page_url for c in carriers
-        if str(c.metrics.get("fingerprint", "")) != str(base.metrics.get("fingerprint", ""))
-    ]
+    # Conflicting identities. All carriers are surfaced because the audit
+    # cannot know which of the competing identities is authoritative; the
+    # counts still distinguish the majority from the disagreeing pages.
     return CheckResult(
         check_id=spec.check_id,
         category=spec.category,
@@ -485,10 +508,10 @@ def _aggregate_consistency(
         points_awarded=0,
         points_possible=spec.points,
         pages_total=pages_total,
-        pages_passed=1,
-        pages_failed=max(1, len(conflicting)),
+        pages_passed=len(carriers) - len(conflicting_checks),
+        pages_failed=len(conflicting_checks),
         pages_unknown=sum(1 for c in page_checks if c.status == CheckStatus.UNKNOWN),
-        affected_pages=[base.page_url] + conflicting if base.page_url else conflicting,
+        affected_pages=[c.page_url for c in carriers if c.page_url],
         **_copy_meta(
             base,
             page_url=None,
@@ -496,7 +519,11 @@ def _aggregate_consistency(
             title=f"Conflicting Organization identity across {len(carriers)} pages",
             evidence=[
                 "Organization JSON-LD name/url/logo/sameAs values differ between pages: "
-                + ", ".join(_short_url(u) for u in ([base.page_url] + conflicting)[:5])
+                + ", ".join(
+                    _short_url(c.page_url)
+                    for c in carriers
+                    if c.page_url
+                )[:240]
             ],
         ),
     )

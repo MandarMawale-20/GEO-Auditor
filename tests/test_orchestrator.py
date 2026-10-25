@@ -74,7 +74,7 @@ async def _fake_robots(url: str) -> RobotsRules:
     return RobotsRules(exists=False)
 
 
-async def _fake_sitemap(url: str, sitemap_hints=None) -> SitemapResult:
+async def _fake_sitemap(url: str, sitemap_hints=None, **kwargs) -> SitemapResult:
     return SitemapResult(
         exists=True,
         url=f"{url}/sitemap.xml",
@@ -213,6 +213,47 @@ async def test_internal_noindex_page_is_excluded_from_scoring(monkeypatch) -> No
         for check in section.checks
     )
     assert report.partial is True
+    assert report.crawl_stats["excluded"] == 1
+    assert report.crawl_stats["failed"] == 0
+
+
+@pytest.mark.asyncio
+async def test_internal_none_robots_is_treated_as_noindex(monkeypatch) -> None:
+    none_html = PRICING_HTML.replace(
+        "<head>", "<head><meta name='robots' content='none'>"
+    )
+    _install_fakes(monkeypatch, internal_html=none_html)
+    report = await orchestrator.run_audit(HOME, max_pages=2)
+
+    excluded = report.pages[1]
+    assert excluded.error == "noindex_excluded"
+    assert excluded.indexable is False
+    assert report.crawl_stats["excluded"] == 1
+    assert report.crawl_stats["failed"] == 0
+
+
+@pytest.mark.asyncio
+async def test_crawler_summary_is_not_shown_when_engine_failed(monkeypatch) -> None:
+    _install_fakes(monkeypatch)
+
+    def fail_crawler(*args, **kwargs):
+        raise RuntimeError("crawler engine unavailable")
+
+    monkeypatch.setattr(
+        orchestrator.technical_engine, "score_ai_crawler_accessibility", fail_crawler
+    )
+    report = await orchestrator.run_audit(HOME, max_pages=1)
+    crawler = next(
+        section for section in report.sections
+        if section.key == "ai_crawler_accessibility"
+    )
+
+    assert all(check.status == CheckStatus.UNKNOWN for check in crawler.checks)
+    assert crawler.points_awarded == 0
+    assert all(
+        "No robots.txt found" not in finding.title
+        for finding in crawler.findings
+    )
 
 
 @pytest.mark.asyncio
@@ -223,6 +264,7 @@ async def test_unreachable_homepage_returns_zero_report(monkeypatch) -> None:
     assert report.total_score == 0
     assert report.grade == "F"
     assert report.pages_audited == 0
+    assert report.partial is True
     assert len(report.sections) == 10
     assert all(
         check.status == CheckStatus.FAIL
@@ -239,6 +281,9 @@ async def test_share_payload_roundtrips_and_excludes_detail(monkeypatch) -> None
     from app.main import encode_report_for_share
 
     encoded = encode_report_for_share(report)
+    from app.config import MAX_SHARE_PAYLOAD_BYTES
+
+    assert len(encoded) <= MAX_SHARE_PAYLOAD_BYTES
     data = _decode_share(encoded)
     restored = AuditReport.model_validate(data)
 

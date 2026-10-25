@@ -1,6 +1,8 @@
 """robots.txt parsing: Allow/Disallow longest-match, wildcards, groups."""
 from __future__ import annotations
 
+from app.engines.technical_engine import score_ai_crawler_accessibility
+from app.models import CheckStatus
 from app.services.robots import RobotsRules, _parse_robots_txt, _pattern_matches
 
 
@@ -90,3 +92,29 @@ def test_missing_specific_group_falls_back_to_wildcard() -> None:
     rules = _rules("User-agent: *\nDisallow: /admin\n")
     assert not rules.is_path_allowed("/admin", "ClaudeBot")
     assert rules.is_path_allowed("/blog", "ClaudeBot")
+
+
+def test_robots_404_is_treated_as_no_restrictions() -> None:
+    rules = RobotsRules(exists=False, fetch_status=404, fetch_error=None)
+    section = score_ai_crawler_accessibility(rules)
+    assert section.points_awarded == 15
+    assert all(check.status == CheckStatus.PASS for check in section.checks)
+
+
+def test_unreachable_robots_is_unknown_not_a_full_pass() -> None:
+    rules = RobotsRules(
+        exists=False,
+        fetch_status=None,
+        fetch_error="ConnectTimeout: robots lookup timed out",
+    )
+    section = score_ai_crawler_accessibility(rules)
+    assert section.points_awarded == 0
+    assert section.points_evaluated == 0
+    assert all(check.status == CheckStatus.UNKNOWN for check in section.checks)
+
+
+def test_robots_5xx_is_unknown() -> None:
+    rules = RobotsRules(exists=False, fetch_status=503, fetch_error="HTTP 503")
+    section = score_ai_crawler_accessibility(rules)
+    assert section.points_awarded == 0
+    assert all(check.status == CheckStatus.UNKNOWN for check in section.checks)

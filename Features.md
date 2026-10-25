@@ -5,8 +5,10 @@
 - Audits the homepage by default. Pass `pages=2..10` to opt into a bounded same-site crawl.
 - Discovers priority internal pages from homepage links and `sitemap.xml`.
 - Keeps only the target host plus its apex/`www` equivalent; other subdomains are excluded unless `CRAWL_INCLUDE_SUBDOMAINS=true`.
-- Honors full `robots.txt` `Allow`/`Disallow` rules (longest match, wildcards, `$`), skips assets/queries/utility pages, validates canonicals, and excludes internal `noindex` pages from scoring.
+- Honors full `robots.txt` `Allow`/`Disallow` rules (longest match, wildcards, `$`), skips assets/queries/utility pages, validates canonicals, and excludes internal `noindex`/`none` pages from scoring. Excluded pages are counted separately from crawl failures.
+- Distinguishes a missing `robots.txt` (4xx, empty, or absent) from an unevaluable one (5xx, 429, timeout, TLS/DNS failure); the latter produces `unknown` crawler checks instead of a full pass.
 - Fetches with bounded concurrency under a shared monotonic deadline. Per-page timeout, total budget exhaustion, and page exceptions are isolated and reported separately.
+- Sitemap hints and child sitemaps are capped and restricted to the audited site (including subdomains only when explicitly enabled).
 - Aggregates checks with the homepage weighted 2× and internal pages 1×. `NOT_APPLICABLE` and `UNKNOWN` pages are excluded from coverage denominators; unknown is never turned into failure.
 
 ### Scoring contract
@@ -22,7 +24,8 @@
 
 - API default is single-page. `pages` accepts 1–10 and is capped by `CRAWL_MAX_PAGES`.
 - Reports include page summaries, crawl counts, `points_evaluated`, and `partial` coverage disclosure.
-- Shared URLs are stateless (gzip + base64url in the hash). A sizing guard compacts presentation-only duplicates if a URL would become impractically long.
+- Shared URLs are stateless (gzip + base64url in the hash). A 64k-character sizing guard compacts presentation-only duplicates, then page summaries, if a URL would become impractically long.
+- Shared-report payloads are treated as untrusted: numeric fields, grades, severities, page links, and non-array collections are validated before rendering.
 - The roadmap sorts by impact/effort, points recoverable, affected-page importance (homepage 2×), then deterministic `check_id`.
 - Unknown checks are excluded from the roadmap.
 - PDF/HTML exports include the audited-page summary and per-page detail; shared payloads omit detailed internal evidence.

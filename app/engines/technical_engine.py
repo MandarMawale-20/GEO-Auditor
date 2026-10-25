@@ -25,6 +25,25 @@ _CRAWLER_CHECK_IDS = {
 }
 
 
+def _robots_lookup_state(robots: RobotsRules) -> str:
+    """Distinguish a missing robots.txt from an unevaluable lookup.
+
+    RFC 9309 treats 4xx as "no restrictions", while 5xx/429 and transport
+    failures mean the rules are unknown. Scoring an unreachable robots.txt as
+    a full pass would hide a real crawlability risk.
+    """
+    status = robots.fetch_status
+    if status is not None:
+        if 200 <= status < 300:
+            return "missing"  # Successful response with an empty body.
+        if 400 <= status < 500 and status != 429:
+            return "missing"
+        return "unknown"
+    if robots.fetch_error is None:
+        return "missing"  # Explicit no-robots fixture / caller decision.
+    return "unknown"
+
+
 def score_ai_crawler_accessibility(robots: RobotsRules) -> AuditSection:
     meta = CATEGORY_META["ai_crawler_accessibility"]
     section = AuditSection(
@@ -35,6 +54,32 @@ def score_ai_crawler_accessibility(robots: RobotsRules) -> AuditSection:
     )
 
     if not robots.exists:
+        if _robots_lookup_state(robots) == "unknown":
+            detail = robots.fetch_error or (
+                f"HTTP {robots.fetch_status}" if robots.fetch_status else "unreachable"
+            )
+            for bot_name in AI_CRAWLER_POINTS:
+                section.add_check(
+                    build_check(
+                        _CRAWLER_CHECK_IDS[bot_name],
+                        status=CheckStatus.UNKNOWN,
+                        severity=Severity.INFO,
+                        title=f"Could not evaluate {bot_name}: robots.txt unavailable",
+                        why_it_matters=(
+                            "Without a readable robots.txt, this audit cannot tell "
+                            "whether the crawler is blocked."
+                        ),
+                        evidence=f"robots.txt lookup failed: {detail}",
+                        recommendation=(
+                            "Make robots.txt publicly reachable, then re-run the audit. "
+                            "Do not assume the bot is allowed."
+                        ),
+                        impact=ImpactLevel.LOW,
+                        effort=EffortLevel.LOW,
+                    )
+                )
+            return section
+
         # No robots.txt = nothing is disallowed, so every bot earns full points.
         for bot_name in AI_CRAWLER_POINTS:
             section.add_check(

@@ -136,7 +136,10 @@ MEDIA_RATIO_CRITICAL: int = 20  # words per image — critical threshold
 # fans out to at most CRAWL_MAX_PAGES same-site requests, and the whole crawl
 # is bounded by CRAWL_TOTAL_BUDGET_SECONDS.
 MAX_CRAWL_PAGES: int = 10
-MAX_SHARE_PAYLOAD_BYTES: int = 180_000  # compressed base64 URL length guard
+# Compressed base64 URL-length guard. Browser address bars commonly truncate
+# around 64k characters, so a larger payload is not reliably shareable even
+# though the reporting pipeline can build it.
+MAX_SHARE_PAYLOAD_BYTES: int = 64_000
 
 
 @dataclass(frozen=True)
